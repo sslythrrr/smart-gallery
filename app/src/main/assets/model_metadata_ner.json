@@ -1,0 +1,50 @@
+{
+  "label_list": [
+    "O",
+    "B-label",
+    "I-label",
+    "B-text",
+    "I-text",
+    "B-album",
+    "I-album",
+    "B-date",
+    "I-date",
+    "B-name",
+    "I-name",
+    "B-type",
+    "I-type"
+  ],
+  "label2id": {
+    "O": 0,
+    "B-label": 1,
+    "I-label": 2,
+    "B-text": 3,
+    "I-text": 4,
+    "B-album": 5,
+    "I-album": 6,
+    "B-date": 7,
+    "I-date": 8,
+    "B-name": 9,
+    "I-name": 10,
+    "B-type": 11,
+    "I-type": 12
+  },
+  "id2label": {
+    "0": "O",
+    "1": "B-label",
+    "2": "I-label",
+    "3": "B-text",
+    "4": "I-text",
+    "5": "B-album",
+    "6": "I-album",
+    "7": "B-date",
+    "8": "I-date",
+    "9": "B-name",
+    "10": "I-name",
+    "11": "B-type",
+    "12": "I-type"
+  },
+  "max_length": 128,
+  "model_type": "distilbert-ner",
+  "vocab_size": 32000
+}
