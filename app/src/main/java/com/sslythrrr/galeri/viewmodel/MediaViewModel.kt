@@ -31,7 +31,7 @@ import com.sslythrrr.galeri.ui.media.MediaType
 import com.sslythrrr.galeri.ui.paging.MediaPagingSource
 import com.sslythrrr.galeri.worker.LocationWorker
 import com.sslythrrr.galeri.worker.MediaScanWorker
-import com.sslythrrr.galeri.worker.ObjectDetectorWorker
+//import com.sslythrrr.galeri.worker.ObjectDetectorWorker
 import com.sslythrrr.galeri.worker.TextRecognizerWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -709,7 +709,7 @@ class MediaViewModel() : ViewModel() {
             .setInputData(workDataOf("needs_notification" to true))
             .build()
 
-        val objectDetectionWork = OneTimeWorkRequestBuilder<ObjectDetectorWorker>()
+        /*val objectDetectionWork = OneTimeWorkRequestBuilder<ObjectDetectorWorker>()
             .setConstraints(constraints)
             .setBackoffCriteria(
                 BackoffPolicy.LINEAR,
@@ -718,7 +718,7 @@ class MediaViewModel() : ViewModel() {
             )
             .addTag("object_detector_work")
             .setInputData(workDataOf("needs_notification" to true))
-            .build()
+            .build()*/
 
         // Text Recognizer Worker (setelah media scan selesai)
         val textRecognitionWork = OneTimeWorkRequestBuilder<TextRecognizerWorker>()
@@ -738,7 +738,7 @@ class MediaViewModel() : ViewModel() {
                 ExistingWorkPolicy.KEEP,
                 mediaScanWork
             )
-            .then(listOf(objectDetectionWork, textRecognitionWork, locationWork))
+            .then(listOf(/*objectDetectionWork*/ textRecognitionWork, locationWork))
             .enqueue()
     }
 

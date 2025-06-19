@@ -71,6 +71,14 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Button
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import java.io.File
 
 @Suppress("DEPRECATION")
 @Composable
@@ -79,12 +87,15 @@ fun Chatbot(
     onQueryChange: (String) -> Unit,
     isDarkTheme: Boolean,
     modifier: Modifier = Modifier,
-    chatbotViewModel: ChatbotViewModel = viewModel()
+    chatbotViewModel: ChatbotViewModel = viewModel(),
+    onImageClick: (String) -> Unit = {},        // Tambahkan ini
+    onShowAllImages: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val window = remember { (context as? Activity)?.window }
     val messages by chatbotViewModel.messages.collectAsState()
     val isLoading by chatbotViewModel.isLoading.collectAsState()
+
 
     LaunchedEffect(Unit) {
         window?.let {
@@ -105,6 +116,8 @@ fun Chatbot(
                 messages = messages,
                 isLoading = isLoading,
                 isDarkTheme = isDarkTheme,
+                onImageClick = onImageClick,
+                onShowAllImages = onShowAllImages,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -136,7 +149,9 @@ fun ChatContent(
     messages: List<ChatMessage>,
     isLoading: Boolean,
     isDarkTheme: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onImageClick: (String) -> Unit = {}, // Tambah parameter
+    onShowAllImages: () -> Unit = {} // Tambah parameter
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -149,7 +164,7 @@ fun ChatContent(
         }
     }
 
-    Box(modifier = modifier.padding(bottom = 120.dp)) {
+    Box(modifier = modifier.padding(bottom = 64.dp)) {
         if (messages.isEmpty()) {
             Column(
                 modifier = Modifier.align(Alignment.Center),
@@ -173,11 +188,16 @@ fun ChatContent(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 items(messages) { message ->
                     Spacer(modifier = Modifier.height(8.dp))
-                    ChatBubble(message = message, isDarkTheme = isDarkTheme)
+                    ChatBubble(
+                        message = message,
+                        isDarkTheme = isDarkTheme,
+                        onImageClick = onImageClick, // Pass callback
+                        onShowAllImages = onShowAllImages // Pass callback
+                    )
                 }
 
                 if (isLoading) {
@@ -193,18 +213,26 @@ fun ChatContent(
 @Composable
 private fun ChatBubble(
     message: ChatMessage,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    onImageClick: (String) -> Unit = {}, // Tambah parameter ini
+    onShowAllImages: () -> Unit = {} // Tambah parameter ini
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(), // Hapus widthIn untuk bot message
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
     ) {
         Column(
-            horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
+            horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start,
+            modifier = Modifier.fillMaxWidth() // Tambah ini untuk bot message full width
         ) {
+            // Text bubble
+            // Bubble container
             Box(
                 modifier = Modifier
-                    .widthIn(max = 280.dp)
+                    .let {
+                        if (message.isUser) it.widthIn(max = 280.dp)
+                        else it.fillMaxWidth()
+                    }
                     .background(
                         color = if (message.isUser) {
                             if (isDarkTheme) GoldAccent else BlueAccent
@@ -220,16 +248,54 @@ private fun ChatBubble(
                     )
                     .padding(12.dp)
             ) {
-                Text(
-                    text = message.text,
-                    color = if (message.isUser) {
-                        Color.White
-                    } else {
-                        if (isDarkTheme) TextWhite else TextBlack
-                    },
-                    fontSize = 14.sp
-                )
+                Column {
+                    // Teks
+                    Text(
+                        text = message.text,
+                        color = if (message.isUser) Color.White else if (isDarkTheme) TextWhite else TextBlack,
+                        fontSize = 14.sp
+                    )
+
+                    // Gambar
+                    if (!message.isUser && message.images.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(message.images) { imagePath ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(120.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onImageClick(imagePath) }
+                                ) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(File(imagePath)),
+                                        contentDescription = "Found image",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+                        }
+
+                        // Tombol "Lihat Semua"
+                        if (message.showAllImagesButton) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = onShowAllImages,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Lihat Semua")
+                            }
+                        }
+                    }
+                }
             }
+
+
+            // Timestamp
             Text(
                 text = formatTimestamp(message.timestamp),
                 color = if (isDarkTheme) TextGray else TextGrayDark,

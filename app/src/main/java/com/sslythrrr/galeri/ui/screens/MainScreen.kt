@@ -87,7 +87,9 @@ fun MainScreen(
     isDarkTheme: Boolean,
     chatbotViewModel: ChatbotViewModel,
     navController: NavController,
-    onNavigationStateChange: (Boolean) -> Unit = {}
+    onNavigationStateChange: (Boolean) -> Unit = {},
+    onImageClick: (String) -> Unit = {},
+    onShowAllImages: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 1)
     LaunchedEffect(pagerState.currentPage) {
@@ -232,7 +234,9 @@ fun MainScreen(
                             onQueryChange = { searchQuery = it },
                             modifier = Modifier.fillMaxSize(),
                             isDarkTheme = isDarkTheme,
-                            chatbotViewModel = chatbotViewModel
+                            chatbotViewModel = chatbotViewModel,
+                            onImageClick = onImageClick, // Pass parameter ini
+                            onShowAllImages = onShowAllImages // Pass parameter ini
                         )
                     }
 

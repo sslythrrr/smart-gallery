@@ -1,20 +1,19 @@
 package com.sslythrrr.galeri.ml
 
+import android.content.Context
+import com.google.gson.Gson
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import android.content.Context
-import com.google.gson.Gson
 import java.nio.LongBuffer
-import kotlin.math.exp
 
 data class IntentMetadata(
-    val labellist: List<String>,
+    val label_list: List<String>,
     val label2id: Map<String, Int>,
     val id2label: Map<String, String>,
-    val maxlength: Int,
-    val modeltype: String,
-    val vocabsize: Int
+    val max_length: Int,
+    val model_type: String,
+    val vocab_size: Int
 )
 
 data class IntentResult(
@@ -47,7 +46,7 @@ class IntentOnnxProcessor(private val context: Context) {
 
             println("✅ ONNX Intent Processor initialized successfully")
             println("📊 Vocab size: ${vocab?.size}")
-            println("🎯 Intent labels: ${metadata?.labellist?.size}")
+            println("🎯 Intent labels: ${metadata?.label_list?.size}")
 
             true
         } catch (e: Exception) {
@@ -100,7 +99,7 @@ class IntentOnnxProcessor(private val context: Context) {
     }
 
     private fun convertTokensToIds(tokens: List<String>): LongArray {
-        val maxLen = metadata?.maxlength ?: 128
+        val maxLen = metadata?.max_length ?: 128
         val ids = LongArray(maxLen)
         val vocab = this.vocab ?: return ids
 
@@ -220,7 +219,7 @@ class IntentOnnxProcessor(private val context: Context) {
         } catch (e: Exception) {
             println("❌ Intent inference error: ${e.message}")
             e.printStackTrace()
-            return FloatArray(metadata?.labellist?.size ?: 0)
+            return FloatArray(metadata?.label_list?.size ?: 0)
         }
     }
 
@@ -241,8 +240,8 @@ class IntentOnnxProcessor(private val context: Context) {
         }
 
         // Apply softmax to get confidence score
-        val expSum = predictions.sumOf { exp(it.toDouble()) }
-        val confidence = exp(maxVal.toDouble()) / expSum
+        val expSum = predictions.map { kotlin.math.exp(it.toDouble()) }.sum()
+        val confidence = kotlin.math.exp(maxVal.toDouble()) / expSum
 
         val intent = metadata?.id2label?.get(maxIdx.toString()) ?: "unknown"
 

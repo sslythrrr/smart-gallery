@@ -17,11 +17,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+import android.net.Uri
 
 data class ChatMessage(
     val text: String,
     val isUser: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val images: List<String> = emptyList(), // Tambah field ini
+    val showAllImagesButton: Boolean = false // Tambah field ini
 )
 
 class ChatbotViewModel : ViewModel() {
@@ -118,10 +121,6 @@ class ChatbotViewModel : ViewModel() {
                     }
                     statusInfo + generateFallbackResponse(message)
                 }
-
-                val botMessage = ChatMessage(response, isUser = false)
-                _messages.value = _messages.value + botMessage
-
             } catch (e: Exception) {
                 val errorMessage = ChatMessage(
                     "❌ Maaf, terjadi kesalahan: ${e.message}",
@@ -160,9 +159,6 @@ class ChatbotViewModel : ViewModel() {
 
         // Cek apakah intent adalah "cari_gambar"
         if (intentResult?.intent == "cari_gambar") {
-            responseBuilder.append("🔍 Mencari gambar...\n\n")
-
-            // Cek apakah ada NER entities yang terdeteksi
             val entities = nerResult?.entities
             if (entities != null && entities.containsKey("label")) {
                 val objectLabels = entities["label"] ?: emptyList()
@@ -170,31 +166,39 @@ class ChatbotViewModel : ViewModel() {
                 if (objectLabels.isNotEmpty()) {
                     // Filter gambar berdasarkan objek yang terdeteksi
                     val filteredImages = filterImagesByObjects(objectLabels)
+                    setAllFilteredImages(filteredImages)
 
                     if (filteredImages.isNotEmpty()) {
-                        responseBuilder.append("🖼️ Ditemukan ${filteredImages.size} gambar dengan objek: ${objectLabels.joinToString(", ")}\n\n")
+                        val labelText = objectLabels.joinToString(", ")
+                        val template = responseTemplate.random()
+                        val resultText = String.format(template, filteredImages.size, labelText)
+                        responseBuilder.append(resultText)
+
 
                         // Tampilkan gambar sesuai jumlah yang ditemukan
                         when (filteredImages.size) {
-                            1 -> {
-                                responseBuilder.append("📷 Gambar ditemukan:\n")
-                                responseBuilder.append("${filteredImages[0]}\n")
-                                responseBuilder.append("*Klik gambar untuk melihat detail*")
+                            0 -> {
+                                responseBuilder.append("Tidak ditemukan gambar dengan objek ${objectLabels.joinToString(", ")}")
                             }
-                            2 -> {
-                                responseBuilder.append("📷 Gambar ditemukan:\n")
-                                filteredImages.forEach { imagePath ->
-                                    responseBuilder.append("$imagePath\n")
-                                }
-                                responseBuilder.append("*Klik gambar untuk melihat detail*")
+                            1 -> {
+                                val botMessage = ChatMessage(
+                                    text = responseBuilder.toString(),
+                                    isUser = false,
+                                    images = filteredImages.take(1),
+                                    showAllImagesButton = false
+                                )
+                                _messages.value = _messages.value + botMessage
+                                return responseBuilder.toString()
                             }
                             else -> {
-                                responseBuilder.append("📷 Menampilkan 3 gambar terbaru:\n")
-                                filteredImages.take(3).forEach { imagePath ->
-                                    responseBuilder.append("$imagePath\n")
-                                }
-                                responseBuilder.append("\n*Lihat semua ${filteredImages.size} gambar di halaman galeri*")
-                                responseBuilder.append("\n*Klik gambar untuk melihat detail*")
+                                val botMessage = ChatMessage(
+                                    text = responseBuilder.toString(),
+                                    isUser = false,
+                                    images = filteredImages.take(3), // Ubah dari 2 ke 3
+                                    showAllImagesButton = filteredImages.size > 3 // Ubah dari 2 ke 3
+                                )
+                                _messages.value = _messages.value + botMessage
+                                return responseBuilder.toString()
                             }
                         }
                     } else {
@@ -235,8 +239,34 @@ class ChatbotViewModel : ViewModel() {
                 }
             }
         }
+        val botMessage = ChatMessage(
+            text = responseBuilder.toString(),
+            isUser = false
+        )
+        _messages.value = _messages.value + botMessage
 
         return responseBuilder.toString()
+    }
+
+    private val responseTemplate = listOf(
+        "Nih, ada %d gambar yang cocok sama kata \"%s\"~",
+        "Ditemukan %d gambar dengan objek '%s'. Silakan dicek ya~",
+        "Ketemu %d gambar sesuai dengan '%s'",
+        "Ada %d gambar berisi '%s' di galeri kamu",
+        "Aku berhasil nemuin %d gambar bertema '%s'",
+        "Scan selesai! %d gambar cocok dengan: %s",
+        "Galeri kamu punya %d gambar yang berkaitan dengan '%s'",
+        "%d gambar cocok dengan pencarian kamu: '%s'",
+        "Hasil pencarian menunjukkan %d gambar untuk '%s'",
+        "Dapat %d gambar yang sesuai sama '%s'"
+    )
+
+
+    private val _allFilteredImages = MutableStateFlow<List<String>>(emptyList())
+    val allFilteredImages: StateFlow<List<String>> = _allFilteredImages.asStateFlow()
+
+    fun setAllFilteredImages(images: List<String>) {
+        _allFilteredImages.value = images
     }
 
     private suspend fun filterImagesByObjects(objectLabels: List<String>): List<String> {

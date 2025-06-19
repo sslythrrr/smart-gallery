@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.sslythrrr.galeri.ui.media.Media
 import com.sslythrrr.galeri.ui.screens.AlbumDetailScreen
+import com.sslythrrr.galeri.ui.screens.FilteredImagesScreen
 import com.sslythrrr.galeri.ui.screens.MainScreen
 import com.sslythrrr.galeri.ui.screens.MediaDetailScreen
 import com.sslythrrr.galeri.ui.screens.SplashScreen
@@ -109,6 +110,26 @@ fun Navigation(
                 navController = navController,
                 onNavigationStateChange = { isLoading ->
                     isMainScreenLoading = isLoading
+                },
+                // TAMBAH PARAMETER BARU INI:
+                onImageClick = { imagePath ->
+                    // Convert path ke Media object
+                    coroutineScope.launch {
+                        val allMedia = viewModel.fetchMedia(context)
+                        val foundMedia = allMedia.find { it.uri.toString() == imagePath }
+                        foundMedia?.let { media ->
+                            if (!navigationState.value) {
+                                navigationState.value = true
+                                navController.navigate("mediaDetail/${media.id}")
+                                coroutineScope.launch {
+                                    navigationState.value = false
+                                }
+                            }
+                        }
+                    }
+                },
+                onShowAllImages = {
+                    navController.navigate("filteredImages")
                 }
             )
         }
@@ -123,6 +144,29 @@ fun Navigation(
                     navController.navigate("mediaDetail/${media.id}")
                 },
                 viewModel = viewModel,
+                isDarkTheme = isDarkTheme
+            )
+        }
+        composable("filteredImages") {
+            FilteredImagesScreen(
+                onBack = { navController.popBackStack() },
+                onImageClick = { imagePath ->
+                    // Convert path ke Media object
+                    coroutineScope.launch {
+                        val allMedia = viewModel.fetchMedia(context)
+                        val foundMedia = allMedia.find { it.uri.toString() == imagePath }
+                        foundMedia?.let { media ->
+                            if (!navigationState.value) {
+                                navigationState.value = true
+                                navController.navigate("mediaDetail/${media.id}")
+                                coroutineScope.launch {
+                                    navigationState.value = false
+                                }
+                            }
+                        }
+                    }
+                },
+                viewModel = chatbotViewModel,
                 isDarkTheme = isDarkTheme
             )
         }

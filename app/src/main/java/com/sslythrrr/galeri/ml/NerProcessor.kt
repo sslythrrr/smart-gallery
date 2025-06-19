@@ -1,19 +1,19 @@
 package com.sslythrrr.galeri.ml
 
+import android.content.Context
+import com.google.gson.Gson
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import android.content.Context
-import com.google.gson.Gson
 import java.nio.LongBuffer
 
 data class NerMetadata(
-    val labellist: List<String>,
+    val label_list: List<String>,
     val label2id: Map<String, Int>,
     val id2label: Map<String, String>,
-    val maxlength: Int,
-    val modeltype: String,
-    val vocabsize: Int
+    val max_length: Int,
+    val model_type: String,
+    val vocab_size: Int
 )
 
 data class NerResult(
@@ -47,7 +47,7 @@ class NerOnnxProcessor(private val context: Context) {
 
             println("✅ ONNX NER Processor initialized successfully")
             println("📊 Vocab size: ${vocab?.size}")
-            println("🏷️ Labels: ${metadata?.labellist?.size}")
+            println("🏷️ Labels: ${metadata?.label_list?.size}")
 
             true
         } catch (e: Exception) {
@@ -103,7 +103,7 @@ class NerOnnxProcessor(private val context: Context) {
     }
 
     private fun convertTokensToIds(tokens: List<String>): LongArray {
-        val maxLen = metadata?.maxlength ?: 128
+        val maxLen = metadata?.max_length ?: 128
         val ids = LongArray(maxLen)
         val vocab = this.vocab ?: return ids
 
@@ -246,10 +246,7 @@ class NerOnnxProcessor(private val context: Context) {
         return predictions.map { id2label[it.toString()] ?: "O" }
     }
 
-    private fun extractEntities(
-        tokens: List<String>,
-        labels: List<String>
-    ): Map<String, List<String>> {
+    private fun extractEntities(tokens: List<String>, labels: List<String>): Map<String, List<String>> {
         val entities = mutableMapOf<String, MutableList<String>>()
 
         for (i in tokens.indices) {
