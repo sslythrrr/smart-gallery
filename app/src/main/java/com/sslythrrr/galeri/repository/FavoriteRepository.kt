@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import androidx.core.content.edit
 
 class FavoriteRepository private constructor(context: Context) {
 
@@ -34,10 +35,6 @@ class FavoriteRepository private constructor(context: Context) {
         }
     }
 
-    fun isFavorite(mediaId: Long): Boolean {
-        return _favoriteMediaIds.value.contains(mediaId)
-    }
-
     fun toggleFavorite(mediaId: Long) {
         val currentFavorites = _favoriteMediaIds.value.toMutableSet()
         if (currentFavorites.contains(mediaId)) {
@@ -52,9 +49,9 @@ class FavoriteRepository private constructor(context: Context) {
 
     private fun saveFavorites(favorites: Set<Long>) {
         val favoritesString = favorites.joinToString(",")
-        sharedPreferences.edit()
-            .putString("favorites", favoritesString)
-            .apply()
+        sharedPreferences.edit {
+            putString("favorites", favoritesString)
+        }
     }
 
     fun getFavoriteMediaIds(): Set<Long> {

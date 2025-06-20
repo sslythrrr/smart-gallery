@@ -32,7 +32,6 @@ import com.sslythrrr.galeri.ui.paging.MediaPagingSource
 import com.sslythrrr.galeri.worker.LocationWorker
 import com.sslythrrr.galeri.worker.MediaScanWorker
 import com.sslythrrr.galeri.worker.ObjectDetectorWorker
-//import com.sslythrrr.galeri.worker.ObjectDetectorWorker
 import com.sslythrrr.galeri.worker.TextRecognizerWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

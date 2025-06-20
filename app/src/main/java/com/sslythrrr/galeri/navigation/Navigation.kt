@@ -17,7 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.sslythrrr.galeri.ui.media.Media
 import com.sslythrrr.galeri.ui.screens.AlbumDetailScreen
-import com.sslythrrr.galeri.ui.screens.FilteredImagesScreen
+import com.sslythrrr.galeri.ui.screens.ChatbotResults
 import com.sslythrrr.galeri.ui.screens.MainScreen
 import com.sslythrrr.galeri.ui.screens.MediaDetailScreen
 import com.sslythrrr.galeri.ui.screens.SplashScreen
@@ -111,12 +111,10 @@ fun Navigation(
                 onNavigationStateChange = { isLoading ->
                     isMainScreenLoading = isLoading
                 },
-                // TAMBAH PARAMETER BARU INI:
-                onImageClick = { imagePath ->
-                    // Convert path ke Media object
+                onImageClick = { path ->
                     coroutineScope.launch {
                         val allMedia = viewModel.fetchMedia(context)
-                        val foundMedia = allMedia.find { it.uri.toString() == imagePath }
+                        val foundMedia = allMedia.find { it.uri.toString() == path }
                         foundMedia?.let { media ->
                             if (!navigationState.value) {
                                 navigationState.value = true
@@ -148,13 +146,12 @@ fun Navigation(
             )
         }
         composable("filteredImages") {
-            FilteredImagesScreen(
+            ChatbotResults(
                 onBack = { navController.popBackStack() },
-                onImageClick = { imagePath ->
-                    // Convert path ke Media object
+                onImageClick = { path ->
                     coroutineScope.launch {
                         val allMedia = viewModel.fetchMedia(context)
-                        val foundMedia = allMedia.find { it.uri.toString() == imagePath }
+                        val foundMedia = allMedia.find { it.uri.toString() == path }
                         foundMedia?.let { media ->
                             if (!navigationState.value) {
                                 navigationState.value = true

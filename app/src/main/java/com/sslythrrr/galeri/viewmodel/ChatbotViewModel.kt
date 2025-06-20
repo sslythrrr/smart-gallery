@@ -1,10 +1,12 @@
 package com.sslythrrr.galeri.viewmodel
-//wf
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sslythrrr.galeri.data.AppDatabase
 import com.sslythrrr.galeri.data.dao.DetectedObjectDao
+import com.sslythrrr.galeri.data.dao.DetectedTextDao
+import com.sslythrrr.galeri.data.dao.ScannedImageDao
 import com.sslythrrr.galeri.ml.IntentOnnxProcessor
 import com.sslythrrr.galeri.ml.IntentResult
 import com.sslythrrr.galeri.ml.NerOnnxProcessor
@@ -22,8 +24,8 @@ data class ChatMessage(
     val text: String,
     val isUser: Boolean,
     val timestamp: Long = System.currentTimeMillis(),
-    val images: List<String> = emptyList(), // Tambah field ini
-    val showAllImagesButton: Boolean = false // Tambah field ini
+    val images: List<String> = emptyList(),
+    val showAllImagesButton: Boolean = false
 )
 
 class ChatbotViewModel : ViewModel() {
@@ -33,7 +35,6 @@ class ChatbotViewModel : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // Tambahkan state untuk error dan status NER
     private val _nerStatus = MutableStateFlow("Belum diinisialisasi")
     private val _intentStatus = MutableStateFlow("Intent belum diinisialisasi")
 
@@ -43,17 +44,18 @@ class ChatbotViewModel : ViewModel() {
     private var isIntentInitialized = false
 
     private var detectedObjectDao: DetectedObjectDao? = null
+    private var detectedTextDao: DetectedTextDao? = null
+    private var scannedImageDao: ScannedImageDao? = null
 
-    // Ganti fungsi yang ada dengan ini
     fun initializeProcessors(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Initialize database dao
                 val database =
-                    AppDatabase.getInstance(context) // Sesuaikan dengan nama database class Anda
+                    AppDatabase.getInstance(context)
                 detectedObjectDao = database.detectedObjectDao()
+                detectedTextDao = database.detectedTextDao()
+                scannedImageDao = database.scannedImageDao()
 
-                // Initialize Intent Processor
                 _intentStatus.value = "Menginisialisasi Intent..."
                 intentProcessor = IntentOnnxProcessor(context)
                 isIntentInitialized = intentProcessor!!.initialize()
@@ -65,7 +67,6 @@ class ChatbotViewModel : ViewModel() {
                     intentProcessor = null
                 }
 
-                // Initialize NER Processor
                 _nerStatus.value = "Menginisialisasi NER..."
                 nerProcessor = NerOnnxProcessor(context)
                 isNerInitialized = nerProcessor!!.initialize()
@@ -89,12 +90,8 @@ class ChatbotViewModel : ViewModel() {
 
     fun sendMessage(message: String) {
         if (message.isBlank()) return
-
-        // Add user message
         val userMessage = ChatMessage(message, isUser = true)
         _messages.value = _messages.value + userMessage
-
-        // Process message
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
 
@@ -107,7 +104,7 @@ class ChatbotViewModel : ViewModel() {
                         val nerResult = nerProcessor?.processQuery(message)
                         generateResponse(intentResult, nerResult)
                     } catch (e: Exception) {
-                        "❌ Error processing: ${e.message}\n\n${generateFallbackResponse(message)}"
+                        "❌ Error processing: ${e.message}\n\n${fallbackResponse(message)}"
                     }
                 } else {
                     val statusInfo = buildString {
@@ -115,7 +112,7 @@ class ChatbotViewModel : ViewModel() {
                         append("Intent: ${_intentStatus.value}\n")
                         append("NER: ${_nerStatus.value}\n\n")
                     }
-                    statusInfo + generateFallbackResponse(message)
+                    statusInfo + fallbackResponse(message)
                 }
             } catch (e: Exception) {
                 val errorMessage = ChatMessage(
@@ -129,7 +126,7 @@ class ChatbotViewModel : ViewModel() {
         }
     }
 
-    private fun generateFallbackResponse(message: String): String {
+    private fun fallbackResponse(message: String): String {
         return when {
             message.contains("foto", ignoreCase = true) ||
                     message.contains("gambar", ignoreCase = true) -> {
@@ -156,27 +153,35 @@ class ChatbotViewModel : ViewModel() {
     ): String {
         val responseBuilder = StringBuilder()
         if (intentResult != null) {
-            responseBuilder.append("Analisis Intent:\n")
-            responseBuilder.append("🎯 Intent: ${intentResult.intent} (${
-                "%.2f".format(
-                    Locale.US,
-                    intentResult.confidence * 100
-                )
-            }%)\n")
+            responseBuilder.append("Intent:\n")
+            responseBuilder.append(
+                "🎯 ${intentResult.intent} (${
+                    "%.2f".format(
+                        Locale.US,
+                        intentResult.confidence * 100
+                    )
+                }%)\n"
+            )
         }
         if (nerResult != null) {
-            responseBuilder.append("Analisis NER:\n")
+            responseBuilder.append("NER:\n")
             val entities = nerResult.entities
 
             if (entities.isNotEmpty()) {
                 entities.forEach { (entityType, values) ->
                     when (entityType) {
-                        "label" -> responseBuilder.append("🏷️ Objek: ${values.joinToString(", ")}\n")
-                        "text" -> responseBuilder.append("📝 Teks: ${values.joinToString(", ")}\n")
-                        "album" -> responseBuilder.append("📁 Album: ${values.joinToString(", ")}\n")
-                        "date" -> responseBuilder.append("📅 Tanggal: ${values.joinToString(", ")}\n")
-                        "name" -> responseBuilder.append("📛 Nama: ${values.joinToString(", ")}\n")
-                        "type" -> responseBuilder.append("🔧 Tipe: ${values.joinToString(", ")}\n")
+                        "label" -> responseBuilder.append("🏷️ Objek: ${values.joinToString(", ")}")
+                        "text" -> responseBuilder.append("📝 Teks: ${values.joinToString(", ")}")
+                        "album" -> responseBuilder.append("📁 Album: ${values.joinToString(", ")}")
+                        "date" -> responseBuilder.append("📅 Tanggal: ${values.joinToString(", ")}")
+                        "name" -> responseBuilder.append("📛 Nama: ${values.joinToString(", ")}")
+                        "type" -> responseBuilder.append("🔧 Tipe: ${values.joinToString(", ")}")
+                        "path" -> responseBuilder.append("📂 Path: ${values.joinToString(", ")}")
+                        "size" -> responseBuilder.append("📏 Ukuran: ${values.joinToString(", ")}")
+                        "resolution" -> responseBuilder.append("🖼️ Resolusi: ${values.joinToString(", ")}")
+                        "month" -> responseBuilder.append("📆 Bulan: ${values.joinToString(", ")}")
+                        "day" -> responseBuilder.append("📅 Hari: ${values.joinToString(", ")}")
+                        "location" -> responseBuilder.append("📍 Lokasi: ${values.joinToString(", ")}")
                     }
                     responseBuilder.append("\n")
                 }
@@ -186,69 +191,50 @@ class ChatbotViewModel : ViewModel() {
         }
         if (intentResult?.intent == "cari_gambar") {
             val entities = nerResult?.entities
-            if (entities != null && entities.containsKey("label")) {
-                val objectLabels = entities["label"] ?: emptyList()
+            if (entities != null && entities.isNotEmpty()) {
+                val filteredImages = filterByNER(entities)
+                setAllFilteredImages(filteredImages)
 
-                if (objectLabels.isNotEmpty()) {
-                    // Filter gambar berdasarkan objek yang terdeteksi
-                    val filteredImages = filterImagesByObjects(objectLabels)
-                    setAllFilteredImages(filteredImages)
+                if (filteredImages.isNotEmpty()) {
+                    val entityDescription = entityDescription(entities)
+                    responseBuilder.append("\n")
+                    val template = responseTemplate.random()
+                    val resultText = String.format(template, filteredImages.size, entityDescription)
+                    responseBuilder.append(resultText)
 
-                    if (filteredImages.isNotEmpty()) {
-                        val labelText = objectLabels.joinToString(", ")
-                        val template = responseTemplate.random()
-                        val resultText = String.format(template, filteredImages.size, labelText)
-                        responseBuilder.append(resultText)
-
-
-                        // Tampilkan gambar sesuai jumlah yang ditemukan
-                        when (filteredImages.size) {
-                            0 -> {
-                                responseBuilder.append(
-                                    "Tidak ditemukan gambar dengan objek ${
-                                        objectLabels.joinToString(
-                                            ", "
-                                        )
-                                    }"
-                                )
-                            }
-
-                            1 -> {
-                                val botMessage = ChatMessage(
-                                    text = responseBuilder.toString(),
-                                    isUser = false,
-                                    images = filteredImages.take(1),
-                                    showAllImagesButton = false
-                                )
-                                _messages.value = _messages.value + botMessage
-                                return responseBuilder.toString()
-                            }
-
-                            else -> {
-                                val botMessage = ChatMessage(
-                                    text = responseBuilder.toString(),
-                                    isUser = false,
-                                    images = filteredImages.take(3), // Ubah dari 2 ke 3
-                                    showAllImagesButton = filteredImages.size > 3 // Ubah dari 2 ke 3
-                                )
-                                _messages.value = _messages.value + botMessage
-                                return responseBuilder.toString()
-                            }
+                    when (filteredImages.size) {
+                        0 -> {
+                            responseBuilder.append("Tidak ditemukan gambar dengan kriteria: $entityDescription")
                         }
-                    } else {
-                        responseBuilder.append(
-                            "❌ Tidak ditemukan gambar dengan objek: ${
-                                objectLabels.joinToString(
-                                    ", "
-                                )
-                            }"
-                        )
+
+                        1 -> {
+                            val botMessage = ChatMessage(
+                                text = responseBuilder.toString(),
+                                isUser = false,
+                                images = filteredImages.take(1),
+                                showAllImagesButton = false
+                            )
+                            _messages.value = _messages.value + botMessage
+                            return responseBuilder.toString()
+                        }
+
+                        else -> {
+                            val botMessage = ChatMessage(
+                                text = responseBuilder.toString(),
+                                isUser = false,
+                                images = filteredImages.take(3),
+                                showAllImagesButton = filteredImages.size > 3
+                            )
+                            _messages.value = _messages.value + botMessage
+                            return responseBuilder.toString()
+                        }
                     }
                 } else {
-                    responseBuilder.append("❓ Tidak ada objek spesifik yang terdeteksi untuk pencarian.")
+                    val entityDescription = entityDescription(entities)
+                    responseBuilder.append("❌ Tidak ditemukan gambar dengan kriteria: $entityDescription")
                 }
             } else {
-                responseBuilder.append("❓ Silakan sebutkan objek yang ingin Anda cari, misalnya: 'cari gambar kucing' atau 'cari foto mobil'")
+                responseBuilder.append("❓ Silakan sebutkan kriteria pencarian yang lebih spesifik, misalnya: 'cari gambar kucing di album liburan' atau 'cari foto dari tahun 2023'")
             }
         }
         val botMessage = ChatMessage(
@@ -281,26 +267,116 @@ class ChatbotViewModel : ViewModel() {
         _allFilteredImages.value = images
     }
 
-    private suspend fun filterImagesByObjects(objectLabels: List<String>): List<String> {
+    private fun entityDescription(entities: Map<String, List<String>>): String {
+        val descriptions = mutableListOf<String>()
+        entities.forEach { (type, values) ->
+            when (type) {
+                "label" -> descriptions.add("objek ${values.joinToString(", ")}")
+                "text" -> descriptions.add("teks ${values.joinToString(", ")}")
+                "album" -> descriptions.add("album ${values.joinToString(", ")}")
+                "date" -> descriptions.add("tahun ${values.joinToString(", ")}")
+                "name" -> descriptions.add("nama ${values.joinToString(", ")}")
+                "type" -> descriptions.add("format ${values.joinToString(", ")}")
+                "path" -> descriptions.add("path ${values.joinToString(", ")}")
+                "size" -> descriptions.add("ukuran ${values.joinToString(", ")}")
+                "resolution" -> descriptions.add("resolusi ${values.joinToString(", ")}")
+                "month" -> descriptions.add("bulan ${values.joinToString(", ")}")
+                "day" -> descriptions.add("hari ${values.joinToString(", ")}")
+                "location" -> descriptions.add("lokasi ${values.joinToString(", ")}")
+            }
+        }
+        return descriptions.joinToString(" dan ")
+    }
+
+    private suspend fun filterByNER(entities: Map<String, List<String>>): List<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val dao = detectedObjectDao
-                if (dao == null) {
+                val detectedObjectDao = detectedObjectDao
+                val detectedTextDao = detectedTextDao
+                val scannedImageDao = scannedImageDao
+
+                if (detectedObjectDao == null || detectedTextDao == null || scannedImageDao == null) {
                     return@withContext emptyList<String>()
                 }
 
-                val filteredPaths = mutableSetOf<String>()
+                val allMatchingPaths = mutableSetOf<String>()
+                var isFirstEntity = true
 
-                objectLabels.forEach { label ->
-                    // Gunakan query yang sudah dimodifikasi
-                    val detectedObjects = dao.getImagesByLabel(label)
-                    detectedObjects.forEach { obj ->
-                        filteredPaths.add(obj.imagePath)
+                entities.forEach { (entityType, values) ->
+                    val currentPaths = mutableSetOf<String>()
+
+                    values.forEach { value ->
+                        when (entityType) {
+                            "label" -> {
+                                val objects = detectedObjectDao.getImagesByLabel(value)
+                                objects.forEach { obj -> currentPaths.add(obj.imagePath) }
+                            }
+
+                            "text" -> {
+                                val textPaths = detectedTextDao.searchImagesByText(value)
+                                currentPaths.addAll(textPaths)
+                            }
+
+                            "album" -> {
+                                val images = scannedImageDao.getImagesByAlbum(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "date" -> {
+                                val year = value.toInt()
+                                val images = scannedImageDao.getImagesByYear(year)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "name" -> {
+                                val images = scannedImageDao.getImagesByName(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "type" -> {
+                                val images = scannedImageDao.getImagesByFormat(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "location" -> {
+                                val images = scannedImageDao.getImagesByLocation(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "month" -> {
+                                val month = value.toInt()
+                                val images = scannedImageDao.getImagesByDateComponents(0, month, 0)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "day" -> {
+                                val day = value.toInt()
+                                val images = scannedImageDao.getImagesByDateComponents(0, 0, day)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+                            // Tambahkan setelah case "day":
+                            "path" -> {
+                                val images = scannedImageDao.getImagesByPath(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+
+                            "resolution" -> {
+                                val images = scannedImageDao.getImagesByResolution(value)
+                                images.forEach { img -> currentPaths.add(img.path) }
+                            }
+                        }
+                    }
+                    if (isFirstEntity) {
+                        allMatchingPaths.addAll(currentPaths)
+                        isFirstEntity = false
+                    } else {
+                        allMatchingPaths.retainAll(currentPaths)
+                    }
+                    if (allMatchingPaths.isEmpty()) {
+                        return@withContext emptyList<String>()
                     }
                 }
-
-                // Urutkan berdasarkan waktu modifikasi (terbaru dulu)
-                filteredPaths.toList().sortedByDescending { path ->
+                allMatchingPaths.toList().sortedByDescending { path ->
                     try {
                         File(path).lastModified()
                     } catch (_: Exception) {

@@ -28,8 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Toggle ini manual aja
-        private const val USE_PREPOPULATED_DB = true // false untuk production
+        private const val USE_PREPOPULATED_DB = true // false utk prod
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -39,7 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
 
                 if (USE_PREPOPULATED_DB) {
-                    builder.createFromAsset("skibidi_db.db")
+                    builder.createFromAsset("gallery.db")
                 }
 
                 val instance = builder.fallbackToDestructiveMigration(false).build()

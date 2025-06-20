@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
@@ -102,19 +103,22 @@ class MediaScanWorker(
             projection, null, null, null
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val pathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH) // Ganti getColumnIndexOrThrow dengan getColumnIndex
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
             val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val albumColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
             val typeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
+                val fileName = cursor.getString(nameColumn)
+                val relativePath = cursor.getString(pathColumn)
+                val baseStorage = Environment.getExternalStorageDirectory().absolutePath
+                val path = "$baseStorage/$relativePath$fileName"
                 val uri =
                     ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                 if (!scannedUris.contains(uri.toString())) {
@@ -126,7 +130,7 @@ class MediaScanWorker(
                     result.add(
                         ImageInfo(
                             uri = uri,
-                            path = cursor.getString(pathColumn),
+                            path = path,
                             name = cursor.getString(nameColumn),
                             size = cursor.getLong(sizeColumn),
                             type = cursor.getString(typeColumn),

@@ -25,7 +25,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilteredImagesScreen(
+fun ChatbotResults(
     onBack: () -> Unit,
     onImageClick: (String) -> Unit,
     viewModel: ChatbotViewModel,
@@ -69,16 +69,16 @@ fun FilteredImagesScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(allFilteredImages) { imagePath ->
+            items(allFilteredImages) { path ->
                 Box(
                     modifier = Modifier
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { onImageClick(imagePath) }
+                        .clickable { onImageClick(path) }
                 ) {
                     Image(
                         painter = rememberAsyncImagePainter(
-                            model = File(imagePath)
+                            model = File(path)
                         ),
                         contentDescription = "Filtered image",
                         modifier = Modifier.fillMaxSize(),

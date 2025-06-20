@@ -26,79 +26,70 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
     private val objectDetector = ObjectDetector(context)
     private val batchSize = 15
 
-    private fun canRetryWork(): Boolean {
-        val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
-        return status?.status != "COMPLETED"
-    }
-
     private fun shouldSkipWork(): Boolean {
         val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
-        return status?.status == "COMPLETED" && runAttemptCount == 0
+        return status?.status == "COMPLETED"
+    }
+
+    private fun getCurrentProgress(): Pair<Int, Int> {
+        val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
+        return if (status != null && status.status == "RUNNING") {
+            Pair(status.totalItems, status.processedItems)
+        } else {
+            Pair(0, 0)
+        }
     }
 
     override suspend fun doWork(): Result {
-        Log.d(tag, "🔥 Object Detector Worker dimulai!")
+        Log.d(tag, "🔥 Object Detector Worker dimulai! (Attempt: $runAttemptCount)")
+
         if (shouldSkipWork()) {
             Log.d(tag, "⏭️ Pekerjaan sudah selesai sebelumnya, skip")
-            return Result.success()
-        }
-
-        if (!canRetryWork() && runAttemptCount > 0) {
-            Log.d(tag, "⏭️ Pekerjaan sudah selesai, tidak perlu retry")
             return Result.success()
         }
 
         val needsNotification = inputData.getBoolean("needs_notification", false)
         if (needsNotification) {
             Notification.createNotificationChannel(applicationContext)
-            Notification.showProgressNotification(
-                applicationContext,
-                notificationId,
-                "Object Detection",
-                "Memulai deteksi objek...",
-                0,
-                100
-            )
         }
 
         try {
             objectDetector.initialize()
 
-            val existingStatus = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
-            if (existingStatus?.status == "FAILED") {
-                updateScanStatus("OBJECT_DETECTOR", 0, 0, "PENDING")
-            }
-
-            // Ambil semua path gambar yang sudah discan metadata-nya
+            // Ambil semua path gambar
             val scannedPaths = imageDao.getAllScannedUris()
-
-            // Ambil semua path gambar yang sudah dideteksi objeknya
             val processedPaths = objectDao.getAllProcessedPaths().toSet()
-
-            // Filter gambar yang belum diproses
             val pathsToProcess = scannedPaths.filter { it !in processedPaths }
 
-            // Check if resuming from previous run
-            val isResuming = existingStatus?.status == "RUNNING"
+            // Cek progress sebelumnya
+            val (previousTotal, previousProcessed) = getCurrentProgress()
+            val isResuming = previousTotal > 0 && previousProcessed > 0 && previousProcessed < previousTotal
 
             if (isResuming) {
-                Log.d(tag, "🔄 Melanjutkan object detection dari sebelumnya...")
-                if (needsNotification) {
-                    Notification.showProgressNotification(
-                        applicationContext,
-                        notificationId,
-                        "Object Detection",
-                        "Melanjutkan deteksi objek...",
-                        existingStatus.processedItems * 100 / existingStatus.totalItems,
-                        100
-                    )
+                Log.d(tag, "🔄 RESUME: Melanjutkan dari $previousProcessed/$previousTotal")
+                // Hitung ulang paths yang belum diproses
+                val actualProcessedPaths = objectDao.getAllProcessedPaths().toSet()
+                val remainingPaths = scannedPaths.filter { it !in actualProcessedPaths }
+
+                Log.d(tag, "📊 Sisa yang perlu diproses: ${remainingPaths.size}")
+
+                if (remainingPaths.isEmpty()) {
+                    Log.d(tag, "✅ Ternyata sudah selesai semua!")
+                    updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
+                    return Result.success()
                 }
             }
 
-            Log.d(tag, "Ditemukan ${pathsToProcess.size} gambar untuk diproses object detection")
+            if (pathsToProcess.isEmpty()) {
+                Log.d(tag, "✅ Tidak ada gambar yang perlu diproses")
+                updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
+                return Result.success()
+            }
 
-            // Update status awal
-            updateScanStatus("OBJECT_DETECTOR", pathsToProcess.size, 0, "RUNNING")
+            Log.d(tag, "📋 Total gambar: ${scannedPaths.size}, Belum diproses: ${pathsToProcess.size}")
+
+            // Update status dengan data yang benar
+            updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size - pathsToProcess.size, "RUNNING")
 
             // Proses batch per batch
             pathsToProcess.chunked(batchSize).forEachIndexed { index, batch ->
@@ -122,37 +113,31 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                     }.awaitAll().flatten()
                 }
 
-
                 if (detectedObjects.isNotEmpty()) {
                     saveToDatabase(detectedObjects)
                 }
 
-                // Update progress
-                val processedCount = (index + 1) * batchSize
+                val batchProcessed = minOf((index + 1) * batchSize, pathsToProcess.size)
+                val totalProcessed = (scannedPaths.size - pathsToProcess.size) + batchProcessed
+                val progressPercent = (totalProcessed * 100) / scannedPaths.size
 
-                val actualProcessed = minOf(processedCount, pathsToProcess.size)
-                val progressPercent = (actualProcessed * 100) / pathsToProcess.size
-                updateScanStatus("OBJECT_DETECTOR", pathsToProcess.size, actualProcessed, "RUNNING")
+                updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, totalProcessed, "RUNNING")
                 setProgress(workDataOf("progress" to progressPercent))
+
+                Log.d(tag, "📊 Progress: $totalProcessed/${scannedPaths.size} ($progressPercent%)")
 
                 if (needsNotification) {
                     Notification.updateProgressNotification(
                         applicationContext,
                         notificationId,
                         "Object Detection",
-                        "Memproses $actualProcessed dari ${pathsToProcess.size} gambar",
+                        "Memproses $totalProcessed dari ${scannedPaths.size} gambar",
                         progressPercent,
                         100
                     )
                 }
             }
-            // Update final status
-            updateScanStatus(
-                "OBJECT_DETECTOR",
-                pathsToProcess.size,
-                pathsToProcess.size,
-                "COMPLETED"
-            )
+            updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
             Log.d(tag, "✅ Object detection selesai, ${pathsToProcess.size} gambar diproses.")
 
             if (needsNotification) {

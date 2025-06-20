@@ -4,6 +4,8 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
+import com.sslythrrr.galeri.data.DataRelations
 import com.sslythrrr.galeri.data.entity.ScannedImage
 import kotlinx.coroutines.flow.Flow
 
@@ -88,4 +90,21 @@ interface ScannedImageDao {
 
     @Query("SELECT * FROM scanned_images WHERE tanggal BETWEEN :startDate AND :endDate AND is_deleted = 0")
     fun getImagesByDateRange(startDate: Long, endDate: Long): List<ScannedImage>
+
+    @Transaction
+    @Query("SELECT * FROM scanned_images WHERE uri = :path")
+    fun getIndexedImageWithDetails(path: String): DataRelations
+
+    @Transaction
+    @Query("SELECT * FROM scanned_images")
+    fun getAllIndexedImagesWithDetails(): List<DataRelations>
+
+    @Query("SELECT * FROM scanned_images WHERE path LIKE '%' || :path || '%' AND is_deleted = 0")
+    fun getImagesByPath(path: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE ukuran >= :minSize AND ukuran <= :maxSize AND is_deleted = 0")
+    fun getImagesBySize(minSize: Long, maxSize: Long): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE resolusi LIKE '%' || :resolution || '%' AND is_deleted = 0")
+    fun getImagesByResolution(resolution: String): List<ScannedImage>
 }

@@ -1,5 +1,5 @@
 package com.sslythrrr.galeri.ml
-
+//Experimental
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
@@ -25,8 +25,8 @@ class TextRecognizerHelper() {
             Log.d(tag, "Memulai text recognition pada: $imagePath")
 
             val options = BitmapFactory.Options().apply {
-                inSampleSize = 32 // Resize untuk mempercepat processing
-                inPreferredConfig = Bitmap.Config.RGB_565 // Format lebih ringan
+                inSampleSize = 32
+                inPreferredConfig = Bitmap.Config.RGB_565
                 inJustDecodeBounds = false
             }
             val bitmap = BitmapFactory.decodeFile(imagePath, options)
@@ -62,7 +62,6 @@ class TextRecognizerHelper() {
     private fun parseTextRecognitionResult(result: Text, imagePath: String): List<DetectedText> {
         val detectedTexts = mutableListOf<DetectedText>()
 
-        // Ambil teks utama (semua teks dalam gambar)
         if (result.text.isNotBlank()) {
             detectedTexts.add(
                 DetectedText(
