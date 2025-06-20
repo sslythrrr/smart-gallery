@@ -17,7 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
-import android.net.Uri
 
 data class ChatMessage(
     val text: String,
@@ -36,9 +35,7 @@ class ChatbotViewModel : ViewModel() {
 
     // Tambahkan state untuk error dan status NER
     private val _nerStatus = MutableStateFlow("Belum diinisialisasi")
-    val nerStatus: StateFlow<String> = _nerStatus.asStateFlow()
     private val _intentStatus = MutableStateFlow("Intent belum diinisialisasi")
-    val intentStatus: StateFlow<String> = _intentStatus.asStateFlow()
 
     private var nerProcessor: NerOnnxProcessor? = null
     private var isNerInitialized = false
@@ -52,7 +49,8 @@ class ChatbotViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Initialize database dao
-                val database = AppDatabase.getInstance(context) // Sesuaikan dengan nama database class Anda
+                val database =
+                    AppDatabase.getInstance(context) // Sesuaikan dengan nama database class Anda
                 detectedObjectDao = database.detectedObjectDao()
 
                 // Initialize Intent Processor
@@ -101,13 +99,11 @@ class ChatbotViewModel : ViewModel() {
             _isLoading.value = true
 
             try {
-                val response = if (isIntentInitialized && isNerInitialized &&
+                if (isIntentInitialized && isNerInitialized &&
                     intentProcessor != null && nerProcessor != null
                 ) {
                     try {
-                        // Process Intent first
                         val intentResult = intentProcessor?.processQuery(message)
-                        // Then process NER
                         val nerResult = nerProcessor?.processQuery(message)
                         generateResponse(intentResult, nerResult)
                     } catch (e: Exception) {
@@ -154,10 +150,40 @@ class ChatbotViewModel : ViewModel() {
         }
     }
 
-    private suspend fun generateResponse(intentResult: IntentResult?, nerResult: NerResult?): String {
+    private suspend fun generateResponse(
+        intentResult: IntentResult?,
+        nerResult: NerResult?
+    ): String {
         val responseBuilder = StringBuilder()
+        if (intentResult != null) {
+            responseBuilder.append("Analisis Intent:\n")
+            responseBuilder.append("🎯 Intent: ${intentResult.intent} (${
+                "%.2f".format(
+                    Locale.US,
+                    intentResult.confidence * 100
+                )
+            }%)\n")
+        }
+        if (nerResult != null) {
+            responseBuilder.append("Analisis NER:\n")
+            val entities = nerResult.entities
 
-        // Cek apakah intent adalah "cari_gambar"
+            if (entities.isNotEmpty()) {
+                entities.forEach { (entityType, values) ->
+                    when (entityType) {
+                        "label" -> responseBuilder.append("🏷️ Objek: ${values.joinToString(", ")}\n")
+                        "text" -> responseBuilder.append("📝 Teks: ${values.joinToString(", ")}\n")
+                        "album" -> responseBuilder.append("📁 Album: ${values.joinToString(", ")}\n")
+                        "date" -> responseBuilder.append("📅 Tanggal: ${values.joinToString(", ")}\n")
+                        "name" -> responseBuilder.append("📛 Nama: ${values.joinToString(", ")}\n")
+                        "type" -> responseBuilder.append("🔧 Tipe: ${values.joinToString(", ")}\n")
+                    }
+                    responseBuilder.append("\n")
+                }
+            } else {
+                responseBuilder.append("Tidak ditemukan entitas khusus.\n\n")
+            }
+        }
         if (intentResult?.intent == "cari_gambar") {
             val entities = nerResult?.entities
             if (entities != null && entities.containsKey("label")) {
@@ -178,8 +204,15 @@ class ChatbotViewModel : ViewModel() {
                         // Tampilkan gambar sesuai jumlah yang ditemukan
                         when (filteredImages.size) {
                             0 -> {
-                                responseBuilder.append("Tidak ditemukan gambar dengan objek ${objectLabels.joinToString(", ")}")
+                                responseBuilder.append(
+                                    "Tidak ditemukan gambar dengan objek ${
+                                        objectLabels.joinToString(
+                                            ", "
+                                        )
+                                    }"
+                                )
                             }
+
                             1 -> {
                                 val botMessage = ChatMessage(
                                     text = responseBuilder.toString(),
@@ -190,6 +223,7 @@ class ChatbotViewModel : ViewModel() {
                                 _messages.value = _messages.value + botMessage
                                 return responseBuilder.toString()
                             }
+
                             else -> {
                                 val botMessage = ChatMessage(
                                     text = responseBuilder.toString(),
@@ -202,41 +236,19 @@ class ChatbotViewModel : ViewModel() {
                             }
                         }
                     } else {
-                        responseBuilder.append("❌ Tidak ditemukan gambar dengan objek: ${objectLabels.joinToString(", ")}")
+                        responseBuilder.append(
+                            "❌ Tidak ditemukan gambar dengan objek: ${
+                                objectLabels.joinToString(
+                                    ", "
+                                )
+                            }"
+                        )
                     }
                 } else {
                     responseBuilder.append("❓ Tidak ada objek spesifik yang terdeteksi untuk pencarian.")
                 }
             } else {
-                // Jika NER tidak mendeteksi objek, tampilkan pesan umum
                 responseBuilder.append("❓ Silakan sebutkan objek yang ingin Anda cari, misalnya: 'cari gambar kucing' atau 'cari foto mobil'")
-            }
-        } else {
-            // Response untuk intent lain (existing code)
-            if (intentResult != null) {
-                responseBuilder.append("🎯 Analisis Intent:\n")
-                responseBuilder.append("Intent: ${intentResult.intent}\n")
-                responseBuilder.append("Confidence: ${"%.2f".format(Locale.US, intentResult.confidence * 100)}%\n\n")
-            }
-
-            if (nerResult != null) {
-                responseBuilder.append("🏷️ Analisis NER:\n")
-                val entities = nerResult.entities
-
-                if (entities.isNotEmpty()) {
-                    entities.forEach { (entityType, values) ->
-                        when (entityType) {
-                            "label" -> responseBuilder.append("🏷️ Objek: ${values.joinToString(", ")}\n")
-                            "text" -> responseBuilder.append("📝 Teks: ${values.joinToString(", ")}\n")
-                            "album" -> responseBuilder.append("📁 Album: ${values.joinToString(", ")}\n")
-                            "date" -> responseBuilder.append("📅 Tanggal: ${values.joinToString(", ")}\n")
-                            "name" -> responseBuilder.append("📛 Nama: ${values.joinToString(", ")}\n")
-                            "type" -> responseBuilder.append("🔧 Tipe: ${values.joinToString(", ")}\n")
-                        }
-                    }
-                } else {
-                    responseBuilder.append("Tidak ditemukan entitas khusus.\n")
-                }
             }
         }
         val botMessage = ChatMessage(
@@ -302,7 +314,4 @@ class ChatbotViewModel : ViewModel() {
         }
     }
 
-    fun clearMessages() {
-        _messages.value = emptyList()
-    }
 }

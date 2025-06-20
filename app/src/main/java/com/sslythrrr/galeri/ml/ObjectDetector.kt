@@ -196,6 +196,7 @@ class ObjectDetector(private val context: Context) {
         } catch (e: Exception) {
             Log.e(tag, "❌ Gagal decode gambar: $imagePath", e)
             null
+            null
         }
     }
 

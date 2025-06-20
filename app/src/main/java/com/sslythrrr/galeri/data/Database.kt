@@ -35,11 +35,11 @@ abstract class AppDatabase : RoomDatabase() {
             return INSTANCE ?: synchronized(this) {
                 val builder = Room.databaseBuilder(
                     context.applicationContext,
-                    AppDatabase::class.java, "skibidi.db"
+                    AppDatabase::class.java, "gallery.db"
                 )
 
                 if (USE_PREPOPULATED_DB) {
-                    builder.createFromAsset("skibidi.db")
+                    builder.createFromAsset("skibidi_db.db")
                 }
 
                 val instance = builder.fallbackToDestructiveMigration(false).build()

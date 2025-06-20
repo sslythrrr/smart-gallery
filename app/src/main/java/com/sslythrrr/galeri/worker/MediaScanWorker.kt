@@ -86,6 +86,7 @@ class MediaScanWorker(
         val result = mutableListOf<ImageInfo>()
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.RELATIVE_PATH,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.WIDTH,
@@ -101,6 +102,7 @@ class MediaScanWorker(
             projection, null, null, null
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
@@ -124,6 +126,7 @@ class MediaScanWorker(
                     result.add(
                         ImageInfo(
                             uri = uri,
+                            path = cursor.getString(pathColumn),
                             name = cursor.getString(nameColumn),
                             size = cursor.getLong(sizeColumn),
                             type = cursor.getString(typeColumn),
@@ -156,6 +159,7 @@ class MediaScanWorker(
 
                     val image = ScannedImage(
                         uri = imageInfo.uri.toString(),
+                        path = imageInfo.path,
                         nama = imageInfo.name,
                         ukuran = imageInfo.size,
                         type = imageInfo.type,
@@ -227,6 +231,7 @@ class MediaScanWorker(
 
     data class ImageInfo(
         val uri: Uri,
+        val path: String,
         val name: String,
         val size: Long,
         val type: String,

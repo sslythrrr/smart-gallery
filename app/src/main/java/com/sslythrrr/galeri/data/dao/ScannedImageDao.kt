@@ -67,4 +67,25 @@ interface ScannedImageDao {
 
     @Query("DELETE FROM scanned_images WHERE is_deleted = 1 AND deleted_at < :thirtyDaysAgo")
     suspend fun permanentlyDeleteOldItems(thirtyDaysAgo: Long)
+
+    @Query("SELECT * FROM scanned_images WHERE album LIKE '%' || :album || '%' AND is_deleted = 0")
+    fun getImagesByAlbum(album: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE nama LIKE '%' || :name || '%' AND is_deleted = 0")
+    fun getImagesByName(name: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE format LIKE '%' || :format || '%' AND is_deleted = 0")
+    fun getImagesByFormat(format: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE location LIKE '%' || :location || '%' AND is_deleted = 0")
+    fun getImagesByLocation(location: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE (year = :year) AND is_deleted = 0")
+    fun getImagesByYear(year: Int): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE (year = :year OR month = :month OR day = :day) AND is_deleted = 0")
+    fun getImagesByDateComponents(year: Int, month: Int, day: Int): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE tanggal BETWEEN :startDate AND :endDate AND is_deleted = 0")
+    fun getImagesByDateRange(startDate: Long, endDate: Long): List<ScannedImage>
 }

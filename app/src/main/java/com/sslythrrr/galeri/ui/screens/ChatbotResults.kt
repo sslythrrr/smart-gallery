@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +31,6 @@ fun FilteredImagesScreen(
     viewModel: ChatbotViewModel,
     isDarkTheme: Boolean
 ) {
-    val context = LocalContext.current
     val allFilteredImages by viewModel.allFilteredImages.collectAsState()
 
     Scaffold(

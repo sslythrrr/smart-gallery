@@ -8,6 +8,7 @@ import androidx.room.PrimaryKey
 data class ScannedImage(
     @PrimaryKey
     @ColumnInfo(name = "uri") val uri: String,
+    @ColumnInfo(name = "path") val path: String,
     @ColumnInfo(name = "nama") val nama: String,
     @ColumnInfo(name = "ukuran") val ukuran: Long,
     @ColumnInfo(name = "format") val type: String,
