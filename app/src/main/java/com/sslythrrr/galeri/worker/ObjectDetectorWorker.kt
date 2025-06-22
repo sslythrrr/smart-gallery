@@ -24,7 +24,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
     private val objectDao = AppDatabase.getInstance(context).detectedObjectDao()
     private val scanStatusDao = AppDatabase.getInstance(context).scanStatusDao()
     private val objectDetector = ObjectDetector(context)
-    private val batchSize = 15
+    private val batchSize = 50
 
     private fun shouldSkipWork(): Boolean {
         val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")

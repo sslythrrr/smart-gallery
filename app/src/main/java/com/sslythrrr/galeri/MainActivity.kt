@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            copyAssetToInternalStorage("ssdmobilenetv2.tflite")
+            copyAssetToInternalStorage("yolov11ncls.tflite")
             copyAssetToInternalStorage("distilbert_ner_smartgallery.onnx")
             copyAssetToInternalStorage("model_metadata_ner.json")
             copyAssetToInternalStorage("distilbert_intent_smartgallery.onnx")

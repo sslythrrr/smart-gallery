@@ -19,16 +19,15 @@ import java.nio.channels.FileChannel
 
 class ObjectDetector(private val context: Context) {
     private val tag = "ObjectDetector"
-    private val modelFilename = "ssdmobilenetv2.tflite"
-    private val inputSize = 320
+    private val modelFilename = "yolov11ncls.tflite"
+    private val inputSize = 224
     private val confidenceThreshold = 0.5f
 
     private lateinit var tflite: Interpreter
     private lateinit var outputShapes: Array<IntArray>
     private var isInitialized = false
     private var reusableByteBuffer: ByteBuffer? = null
-    private var reusableOutputBoxes = Array(1) { Array(12804) { FloatArray(4) } }
-    private var reusableOutputClasses = Array(1) { Array(12804) { FloatArray(91) } }
+    private var reusableOutputClasses = Array(1) { FloatArray(1000) }
 
     private val lock = Any()
 
@@ -60,19 +59,12 @@ class ObjectDetector(private val context: Context) {
                 }
 
                 val inputBuffer = convertBitmapToByteBuffer(bitmap)
-                val outputBoxes = reusableOutputBoxes
                 val outputClasses = reusableOutputClasses
 
-                val outputMap = mapOf(
-                    6 to outputBoxes,
-                    7 to outputClasses
-                )
-
                 Log.d(tag, "Running inference pada gambar: $imagePath")
-                tflite.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputMap)
+                tflite.run(inputBuffer, outputClasses)
 
-                return parseDetectionResults(
-                    boxes = outputBoxes[0],
+                return parseClassificationResults(
                     classes = outputClasses[0],
                     imagePath = imagePath
                 )
@@ -107,6 +99,13 @@ class ObjectDetector(private val context: Context) {
         }
 
         Log.d(tag, "Model dimuat. Jumlah outputTensor: ${tflite.outputTensorCount}")
+        val inputTensor = tflite.getInputTensor(0)
+        val outputTensor = tflite.getOutputTensor(0)
+        Log.d(tag, "Input shape: ${inputTensor.shape().contentToString()}")
+        Log.d(tag, "Output shape: ${outputTensor.shape().contentToString()}")
+        Log.d(tag, "Input dataType: ${inputTensor.dataType()}")
+        Log.d(tag, "Expected input bytes: ${inputTensor.numBytes()}")
+        Log.d(tag, "Our buffer size: ${1 * inputSize * inputSize * 3 * 4}")
     }
 
 
@@ -120,7 +119,7 @@ class ObjectDetector(private val context: Context) {
 
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
         if (reusableByteBuffer == null) {
-            reusableByteBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3)
+            reusableByteBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
             reusableByteBuffer!!.order(ByteOrder.nativeOrder())
         }
         val byteBuffer = reusableByteBuffer!!
@@ -130,54 +129,48 @@ class ObjectDetector(private val context: Context) {
         bitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
 
         for (pixel in pixels) {
-            byteBuffer.put(((pixel shr 16) and 0xFF).toByte())
-            byteBuffer.put(((pixel shr 8) and 0xFF).toByte())
-            byteBuffer.put((pixel and 0xFF).toByte())
+            val r = ((pixel shr 16) and 0xFF) / 255.0f
+            val g = ((pixel shr 8) and 0xFF) / 255.0f
+            val b = (pixel and 0xFF) / 255.0f
+
+            byteBuffer.putFloat(r)
+            byteBuffer.putFloat(g)
+            byteBuffer.putFloat(b)
         }
 
         byteBuffer.rewind()
         return byteBuffer
     }
 
-    private fun parseDetectionResults(
-        boxes: Array<FloatArray>,
-        classes: Array<FloatArray>,
+    private fun parseClassificationResults(
+        classes: FloatArray,
         imagePath: String
     ): List<DetectedObject> {
         val results = mutableListOf<DetectedObject>()
 
-        for (i in boxes.indices) {
-            var maxScore = 0f
-            var maxClassId = 0
+        // Ambil top 5 predictions
+        val classWithScores = classes.mapIndexed { index, score ->
+            Pair(index, score)
+        }.sortedByDescending { it.second }.take(5)
 
-            for (classId in 1 until classes[i].size) {
-                val score = classes[i][classId]
-                if (score > maxScore) {
-                    maxScore = score
-                    maxClassId = classId
-                }
-            }
+        for ((classId, score) in classWithScores) {
+            if (score >= confidenceThreshold) {
+                val label = Labels.getLabel(classId)
 
-            if (maxScore >= confidenceThreshold) {
-                val label = Labels.getLabel(maxClassId - 1)
+                Log.d(tag, "Klasifikasi: class=$classId, label=$label, score=$score")
 
-                Log.d(
-                    tag,
-                    "Deteksi terproses: class=${maxClassId - 1}, label=$label, score=$maxScore"
-                )
-
-                if (label != "Unknown") {
+                if (label != "Tidak Diketahui") {
                     results.add(
                         DetectedObject(
                             imagePath = imagePath,
                             label = label,
-                            confidence = maxScore
+                            confidence = score
                         )
                     )
                 }
             }
         }
-        return results.sortedByDescending { it.confidence }.take(5)
+        return results
     }
 
     private fun loadAndResizeImage(imagePath: String): Bitmap? {
