@@ -3,8 +3,11 @@ package com.sslythrrr.galeri.ml
 import android.content.Context
 import com.google.gson.Gson
 import org.tensorflow.lite.Interpreter
+import java.io.File
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 
 data class IntentMetadata(
     val label_list: List<String>,
@@ -29,10 +32,17 @@ class IntentOnnxProcessor(private val context: Context) {
         return try {
             println("🔧 Initializing TFLite Intent Processor...")
 
-            val modelBytes = context.assets.open("distilbert_intent.tflite").readBytes()
-            val modelByteBuffer = ByteBuffer.allocateDirect(modelBytes.size)
-            modelByteBuffer.put(modelBytes)
+            val modelFile = File(context.filesDir, "distilbert_intent.tflite")
+
+            val fileInputStream = FileInputStream(modelFile)
+            val fileChannel = fileInputStream.channel
+            val modelByteBuffer = fileChannel.map(
+                FileChannel.MapMode.READ_ONLY,
+                0,
+                modelFile.length()
+            )
             interpreter = Interpreter(modelByteBuffer)
+            fileInputStream.close()
 
             metadata = loadMetadata("model_metadata_intent.json")
             vocab = loadVocabulary()

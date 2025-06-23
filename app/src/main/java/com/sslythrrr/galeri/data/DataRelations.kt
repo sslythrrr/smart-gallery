@@ -9,14 +9,14 @@ import com.sslythrrr.galeri.data.entity.ScannedImage
 data class DataRelations(
     @Embedded val image: ScannedImage,
     @Relation(
-        parentColumn = "path",
-        entityColumn = "path",
+        parentColumn = "uri",
+        entityColumn = "uri",
         entity = DetectedObject::class
     )
     val detectedObjects: List<DetectedObject>,
     @Relation(
-        parentColumn = "path",
-        entityColumn = "path",
+        parentColumn = "uri",
+        entityColumn = "uri",
         entity = DetectedText::class
     )
     val detectedTexts: List<DetectedText>

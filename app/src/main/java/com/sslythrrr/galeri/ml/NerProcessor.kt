@@ -3,8 +3,11 @@ package com.sslythrrr.galeri.ml
 import android.content.Context
 import com.google.gson.Gson
 import org.tensorflow.lite.Interpreter
+import java.io.File
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 
 data class NerMetadata(
     val label_list: List<String>,
@@ -30,10 +33,17 @@ class NerOnnxProcessor(private val context: Context) {
         return try {
             println("🔧 Initializing ONNX NER Processor...")
 
-            val modelBytes = context.assets.open("distilbert_ner.tflite").readBytes()
-            val modelByteBuffer = ByteBuffer.allocateDirect(modelBytes.size)
-            modelByteBuffer.put(modelBytes)
+            val modelFile = File(context.filesDir, "distilbert_ner.tflite")
+
+            val fileInputStream = FileInputStream(modelFile)
+            val fileChannel = fileInputStream.channel
+            val modelByteBuffer = fileChannel.map(
+                FileChannel.MapMode.READ_ONLY,
+                0,
+                modelFile.length()
+            )
             interpreter = Interpreter(modelByteBuffer)
+            fileInputStream.close()
 
             // Load metadata
             metadata = loadMetadata("model_metadata_ner.json")
