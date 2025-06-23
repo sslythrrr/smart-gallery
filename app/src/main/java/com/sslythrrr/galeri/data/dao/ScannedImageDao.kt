@@ -31,19 +31,19 @@ interface ScannedImageDao {
     )
     fun searchImages(query: String): Flow<List<ScannedImage>>
 
-    @Query("SELECT * FROM scanned_images WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND location_fetched = 0 LIMIT :limit")
+    @Query("SELECT * FROM scanned_images WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND fetch_lokasi = 0 LIMIT :limit")
     suspend fun getImagesNeedingLocation(limit: Int): List<ScannedImage>
 
-    @Query("SELECT * FROM scanned_images WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (location IS NULL OR location = '') AND location_retry_count < 3")
+    @Query("SELECT * FROM scanned_images WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (lokasi IS NULL OR lokasi = '') AND retry_lokasi < 3")
     suspend fun getImagesForLocationRetry(): List<ScannedImage>
 
-    @Query("UPDATE scanned_images SET location = :location, location_fetched = 1 WHERE uri = :uri")
+    @Query("UPDATE scanned_images SET lokasi = :location, fetch_lokasi = 1 WHERE uri = :uri")
     suspend fun updateImageLocation(uri: String, location: String)
 
-    @Query("UPDATE scanned_images SET location_fetched = 1, location_retry_count = location_retry_count + 1 WHERE uri = :uri")
+    @Query("UPDATE scanned_images SET fetch_lokasi = 1, retry_lokasi = retry_lokasi + 1 WHERE uri = :uri")
     suspend fun markLocationFetchFailed(uri: String)
 
-    @Query("UPDATE scanned_images SET location_fetched = 0 WHERE uri IN (:uris)")
+    @Query("UPDATE scanned_images SET fetch_lokasi = 0 WHERE uri IN (:uris)")
     suspend fun resetLocationFetchStatus(uris: List<String>)
 
     @Query("SELECT * FROM scanned_images WHERE is_deleted = 0 ORDER BY tanggal DESC")
@@ -79,14 +79,17 @@ interface ScannedImageDao {
     @Query("SELECT * FROM scanned_images WHERE format LIKE '%' || :format || '%' AND is_deleted = 0")
     fun getImagesByFormat(format: String): List<ScannedImage>
 
-    @Query("SELECT * FROM scanned_images WHERE location LIKE '%' || :location || '%' AND is_deleted = 0")
+    @Query("SELECT * FROM scanned_images WHERE lokasi LIKE '%' || :location || '%' AND is_deleted = 0")
     fun getImagesByLocation(location: String): List<ScannedImage>
 
-    @Query("SELECT * FROM scanned_images WHERE (year = :year) AND is_deleted = 0")
+    @Query("SELECT * FROM scanned_images WHERE (tahun = :year) AND is_deleted = 0")
     fun getImagesByYear(year: Int): List<ScannedImage>
 
-    @Query("SELECT * FROM scanned_images WHERE (year = :year OR month = :month OR day = :day) AND is_deleted = 0")
-    fun getImagesByDateComponents(year: Int, month: Int, day: Int): List<ScannedImage>
+    @Query("SELECT * FROM scanned_images WHERE bulan LIKE '%' || :month || '%' AND is_deleted = 0")
+    fun getImagesByMonth(month: String): List<ScannedImage>
+
+    @Query("SELECT * FROM scanned_images WHERE (hari = :day) AND is_deleted = 0")
+    fun getImagesByDay(day: Int): List<ScannedImage>
 
     @Query("SELECT * FROM scanned_images WHERE tanggal BETWEEN :startDate AND :endDate AND is_deleted = 0")
     fun getImagesByDateRange(startDate: Long, endDate: Long): List<ScannedImage>

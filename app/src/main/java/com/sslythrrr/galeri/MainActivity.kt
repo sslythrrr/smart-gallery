@@ -62,12 +62,12 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            copyAssetToInternalStorage("yolo11_cls.tflite")
-            copyAssetToInternalStorage("distilbert_ner.tflite")
-            copyAssetToInternalStorage("model_metadata_ner.json")
-            copyAssetToInternalStorage("distilbert_intent.tflite")
-            copyAssetToInternalStorage("model_metadata_intent.json")
-            copyAssetToInternalStorage("vocab.txt")
+            copyAsset("yolo11_cls.tflite")
+            copyAsset("distilbert_ner.tflite")
+            copyAsset("distilbert_intent.tflite")
+            copyAsset("model_metadata_ner.json")
+            copyAsset("model_metadata_intent.json")
+            copyAsset("vocab.txt")
             LocationRetryManager.checkAndRetryLocationFetch(this@MainActivity)
         }
 
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @OptIn(UnstableApi::class)
-    private fun copyAssetToInternalStorage(assetFileName: String) {
+    private fun copyAsset(assetFileName: String) {
         val file = File(filesDir, assetFileName)
         if (!file.exists()) {
             assets.open(assetFileName).use { inputStream ->

@@ -14,18 +14,20 @@ interface DetectedTextDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAll(detectedTexts: List<DetectedText>)
 
-    @Query("SELECT * FROM detected_texts WHERE path = :imagePath")
-    fun getTextsForImage(imagePath: String): List<DetectedText>
+    @Query("SELECT * FROM detected_texts WHERE uri = :uri")
+    fun getTextsForImage(uri: String): List<DetectedText>
 
     @Query("SELECT * FROM detected_texts WHERE text LIKE '%' || :query || '%'")
     fun searchTexts(query: String): List<DetectedText>
 
-    @Query("SELECT DISTINCT path FROM detected_texts WHERE text LIKE '%' || :query || '%'")
+    @Query("SELECT DISTINCT scanned_images.path FROM scanned_images " +
+            "JOIN detected_texts ON scanned_images.uri = detected_texts.uri " +
+            "WHERE detected_texts.text LIKE '%' || :query || '%'")
     fun searchImagesByText(query: String): List<String>
 
-    @Query("DELETE FROM detected_texts WHERE path = :imagePath")
-    fun deleteTextsForImage(imagePath: String)
+    @Query("DELETE FROM detected_texts WHERE uri = :uri")
+    fun deleteTextsForImage(uri: String)
 
-    @Query("SELECT DISTINCT path FROM detected_texts")
+    @Query("SELECT DISTINCT uri FROM detected_texts")
     fun getAllProcessedPaths(): List<String>
 }

@@ -309,7 +309,7 @@ class ChatbotViewModel : ViewModel() {
                         when (entityType) {
                             "label" -> {
                                 val objects = detectedObjectDao.getImagesByLabel(value)
-                                objects.forEach { obj -> currentPaths.add(obj.imagePath) }
+                                objects.forEach { obj -> currentPaths.add(obj.path) }
                             }
 
                             "text" -> {
@@ -344,17 +344,15 @@ class ChatbotViewModel : ViewModel() {
                             }
 
                             "month" -> {
-                                val month = value.toInt()
-                                val images = scannedImageDao.getImagesByDateComponents(0, month, 0)
+                                val images = scannedImageDao.getImagesByMonth(value)
                                 images.forEach { img -> currentPaths.add(img.path) }
                             }
 
                             "day" -> {
                                 val day = value.toInt()
-                                val images = scannedImageDao.getImagesByDateComponents(0, 0, day)
+                                val images = scannedImageDao.getImagesByDay(day)
                                 images.forEach { img -> currentPaths.add(img.path) }
                             }
-                            // Tambahkan setelah case "day":
                             "path" -> {
                                 val images = scannedImageDao.getImagesByPath(value)
                                 images.forEach { img -> currentPaths.add(img.path) }
@@ -390,4 +388,7 @@ class ChatbotViewModel : ViewModel() {
         }
     }
 
+    fun clearMessages() {
+        _messages.value = emptyList()
+    }
 }
