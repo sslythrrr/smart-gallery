@@ -62,10 +62,10 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            copyAssetToInternalStorage("yolov11ncls.tflite")
-            copyAssetToInternalStorage("distilbert_ner_smartgallery.onnx")
+            copyAssetToInternalStorage("yolo11_cls.tflite")
+            copyAssetToInternalStorage("distilbert_ner.tflite")
             copyAssetToInternalStorage("model_metadata_ner.json")
-            copyAssetToInternalStorage("distilbert_intent_smartgallery.onnx")
+            copyAssetToInternalStorage("distilbert_intent.tflite")
             copyAssetToInternalStorage("model_metadata_intent.json")
             copyAssetToInternalStorage("vocab.txt")
             LocationRetryManager.checkAndRetryLocationFetch(this@MainActivity)

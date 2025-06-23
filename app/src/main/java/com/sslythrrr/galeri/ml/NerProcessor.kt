@@ -2,10 +2,9 @@ package com.sslythrrr.galeri.ml
 //Experimental
 import android.content.Context
 import com.google.gson.Gson
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
-import java.nio.LongBuffer
+import org.tensorflow.lite.Interpreter
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 data class NerMetadata(
     val label_list: List<String>,
@@ -23,8 +22,7 @@ data class NerResult(
 )
 
 class NerOnnxProcessor(private val context: Context) {
-    private var ortSession: OrtSession? = null
-    private var ortEnvironment: OrtEnvironment? = null
+    private var interpreter: Interpreter? = null
     private var metadata: NerMetadata? = null
     private var vocab: Map<String, Int>? = null
 
@@ -32,12 +30,10 @@ class NerOnnxProcessor(private val context: Context) {
         return try {
             println("🔧 Initializing ONNX NER Processor...")
 
-            // Initialize ONNX Runtime
-            ortEnvironment = OrtEnvironment.getEnvironment()
-
-            // Load model
-            val modelBytes = context.assets.open("distilbert_ner_smartgallery.onnx").readBytes()
-            ortSession = ortEnvironment!!.createSession(modelBytes)
+            val modelBytes = context.assets.open("distilbert_ner.tflite").readBytes()
+            val modelByteBuffer = ByteBuffer.allocateDirect(modelBytes.size)
+            modelByteBuffer.put(modelBytes)
+            interpreter = Interpreter(modelByteBuffer)
 
             // Load metadata
             metadata = loadMetadata("model_metadata_ner.json")
@@ -57,14 +53,24 @@ class NerOnnxProcessor(private val context: Context) {
         }
     }
 
+    // NEW: Tambahkan di fungsi processQuery untuk debugging
     fun processQuery(query: String): NerResult {
+        println("🔍 Processing query: '$query'")
         val tokens = tokenize(query)
-        val inputIds = convertTokensToIds(tokens)
-        val attentionMask = createAttentionMask(inputIds)
+        println("🔤 Tokens: $tokens")
 
+        val inputIds = convertTokensToIds(tokens)
+        println("🔢 Input IDs: ${inputIds.take(10)}...")
+
+        val attentionMask = createAttentionMask(inputIds)
         val predictions = runInference(inputIds, attentionMask)
+        println("🎯 Raw predictions: ${predictions.take(10)}...")
+
         val labels = convertPredictionsToLabels(predictions)
+        println("🏷️ Labels: $labels")
+
         val entities = extractEntities(tokens, labels)
+        println("📝 Entities: $entities")
 
         return NerResult(tokens, labels, entities)
     }
@@ -182,55 +188,70 @@ class NerOnnxProcessor(private val context: Context) {
     }
 
     private fun runInference(inputIds: LongArray, attentionMask: LongArray): IntArray {
-        val ortSession = this.ortSession ?: return IntArray(0)
-        val ortEnvironment = this.ortEnvironment ?: return IntArray(0)
+        val interpreter = this.interpreter ?: return IntArray(0)
 
         try {
-            // Create input tensors
-            val inputShape = longArrayOf(1, inputIds.size.toLong())
+            // Prepare input buffers
+            val batchSize = 1
+            val sequenceLength = inputIds.size
 
-            val inputIdsTensor = OnnxTensor.createTensor(
-                ortEnvironment,
-                LongBuffer.wrap(inputIds),
-                inputShape
-            )
+            val inputIdsBuffer = ByteBuffer.allocateDirect(4 * batchSize * sequenceLength)
+            inputIdsBuffer.order(ByteOrder.nativeOrder())
 
-            val attentionMaskTensor = OnnxTensor.createTensor(
-                ortEnvironment,
-                LongBuffer.wrap(attentionMask),
-                inputShape
-            )
+            val attentionMaskBuffer = ByteBuffer.allocateDirect(4 * batchSize * sequenceLength)
+            attentionMaskBuffer.order(ByteOrder.nativeOrder())
 
-            // Run inference
-            val inputs = mapOf(
-                "input_ids" to inputIdsTensor,
-                "attention_mask" to attentionMaskTensor
-            )
+            inputIdsBuffer.rewind()
+            attentionMaskBuffer.rewind()
 
-            val result = ortSession.run(inputs)
-
-            // Get logits
-            val logits = result[0].value as Array<Array<FloatArray>>
-            val predictions = IntArray(inputIds.size)
-
-            // Convert logits to predictions
-            for (i in predictions.indices) {
-                var maxIdx = 0
-                var maxVal = Float.NEGATIVE_INFINITY
-
-                for (j in logits[0][i].indices) {
-                    if (logits[0][i][j] > maxVal) {
-                        maxVal = logits[0][i][j]
-                        maxIdx = j
-                    }
-                }
-                predictions[i] = maxIdx
+            // Fill input buffers
+            for (i in inputIds.indices) {
+                inputIdsBuffer.putInt(inputIds[i].toInt())
+                attentionMaskBuffer.putInt(attentionMask[i].toInt())
             }
 
-            // Cleanup
-            inputIdsTensor.close()
-            attentionMaskTensor.close()
-            result.close()
+            // Prepare output buffer
+            val numLabels = metadata?.label_list?.size ?: 9
+            val outputBuffer = ByteBuffer.allocateDirect(4 * batchSize * sequenceLength * numLabels)
+            outputBuffer.order(ByteOrder.nativeOrder())
+
+            // Run inference
+            val inputMap = HashMap<Int, Any>()
+            interpreter.getInputTensor(0)?.let {
+                val name = it.name()
+                if (name == "input_ids") {
+                    inputMap[0] = inputIdsBuffer
+                    inputMap[1] = attentionMaskBuffer
+                } else {
+                    inputMap[0] = attentionMaskBuffer
+                    inputMap[1] = inputIdsBuffer
+                }
+            }
+
+
+            val outputs = mapOf(0 to outputBuffer)
+
+            interpreter.runForMultipleInputsOutputs(arrayOf(inputMap[0]!!, inputMap[1]!!), outputs)
+
+
+            // Process output
+            outputBuffer.rewind()
+            val predictions = IntArray(sequenceLength)
+            val logits = Array(sequenceLength) { FloatArray(numLabels) }
+
+// Ambil semua nilai dulu dari buffer
+            for (i in 0 until sequenceLength) {
+                for (j in 0 until numLabels) {
+                    logits[i][j] = outputBuffer.getFloat()
+                }
+            }
+
+// Cari index dengan nilai tertinggi per token
+            for (i in 0 until sequenceLength) {
+                val tokenLogits = logits[i]
+                predictions[i] = tokenLogits.indices.maxByOrNull { tokenLogits[it] } ?: 0
+            }
+
 
             return predictions
 
@@ -249,23 +270,23 @@ class NerOnnxProcessor(private val context: Context) {
     private fun extractEntities(tokens: List<String>, labels: List<String>): Map<String, List<String>> {
         val entities = mutableMapOf<String, MutableList<String>>()
 
-        for (i in tokens.indices) {
-            if (i + 1 < labels.size) {
-                val label = labels[i + 1]
-                if (label.startsWith("B-")) {
-                    val entityType = label.substring(2)
-                    if (!entities.containsKey(entityType)) {
-                        entities[entityType] = mutableListOf()
-                    }
-                    entities[entityType]?.add(tokens[i])
-                }
+        // Kita asumsikan posisi token diisi mulai dari label[1]
+        for ((tokenIndex, token) in tokens.withIndex()) {
+            val labelIndex = tokenIndex + 1  // geser karena token ke-0 = token pertama, label ke-0 = [CLS]
+            if (labelIndex >= labels.size) continue
+
+            val label = labels[labelIndex]
+            if (label.startsWith("B-")) {
+                val type = label.removePrefix("B-")
+                entities.getOrPut(type) { mutableListOf() }.add(token)
             }
         }
+
         return entities
     }
 
+
     fun close() {
-        ortSession?.close()
-        ortEnvironment?.close()
+        interpreter?.close()
     }
 }

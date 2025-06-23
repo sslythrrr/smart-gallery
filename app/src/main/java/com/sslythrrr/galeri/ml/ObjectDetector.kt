@@ -8,8 +8,7 @@ import androidx.core.graphics.scale
 import com.sslythrrr.galeri.data.entity.DetectedObject
 import com.sslythrrr.galeri.data.utils.Labels
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegate
+
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
@@ -19,7 +18,7 @@ import java.nio.channels.FileChannel
 
 class ObjectDetector(private val context: Context) {
     private val tag = "ObjectDetector"
-    private val modelFilename = "yolov11ncls.tflite"
+    private val modelFilename = "yolo11_cls.tflite"
     private val inputSize = 224
     private val confidenceThreshold = 0.5f
 
@@ -84,14 +83,8 @@ class ObjectDetector(private val context: Context) {
         }
 
         val options = Interpreter.Options()
-        val compatList = CompatibilityList()
+        options.setNumThreads(2)
 
-        if (compatList.isDelegateSupportedOnThisDevice) {
-            val gpuDelegate = GpuDelegate()
-            options.addDelegate(gpuDelegate)
-        } else {
-            options.setNumThreads(2)
-        }
 
         tflite = Interpreter(loadModelFile(modelFile), options)
         outputShapes = Array(tflite.outputTensorCount) { i ->

@@ -2,10 +2,9 @@ package com.sslythrrr.galeri.ml
 //Experimental
 import android.content.Context
 import com.google.gson.Gson
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
-import java.nio.LongBuffer
+import org.tensorflow.lite.Interpreter
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 data class IntentMetadata(
     val label_list: List<String>,
@@ -22,46 +21,40 @@ data class IntentResult(
 )
 
 class IntentOnnxProcessor(private val context: Context) {
-    private var ortSession: OrtSession? = null
-    private var ortEnvironment: OrtEnvironment? = null
+    private var interpreter: Interpreter? = null
     private var metadata: IntentMetadata? = null
     private var vocab: Map<String, Int>? = null
 
     fun initialize(): Boolean {
         return try {
-            println("🔧 Initializing ONNX Intent Processor...")
+            println("🔧 Initializing TFLite Intent Processor...")
 
-            // Initialize ONNX Runtime
-            ortEnvironment = OrtEnvironment.getEnvironment()
+            val modelBytes = context.assets.open("distilbert_intent.tflite").readBytes()
+            val modelByteBuffer = ByteBuffer.allocateDirect(modelBytes.size)
+            modelByteBuffer.put(modelBytes)
+            interpreter = Interpreter(modelByteBuffer)
 
-            // Load model
-            val modelBytes = context.assets.open("distilbert_intent_smartgallery.onnx").readBytes()
-            ortSession = ortEnvironment!!.createSession(modelBytes)
-
-            // Load metadata
             metadata = loadMetadata("model_metadata_intent.json")
-
-            // Load vocabulary (shared with NER)
             vocab = loadVocabulary()
 
-            println("✅ ONNX Intent Processor initialized successfully")
-            println("📊 Vocab size: ${vocab?.size}")
-            println("🎯 Intent labels: ${metadata?.label_list?.size}")
-
+            println("✅ TFLite Intent Processor initialized successfully")
             true
         } catch (e: Exception) {
-            println("❌ Failed to initialize ONNX Intent: ${e.message}")
-            e.printStackTrace()
+            println("❌ Failed to initialize TFLite Intent: ${e.message}")
             false
         }
     }
 
     fun processQuery(query: String): IntentResult {
+        println("🔍 intent query: '$query'")
         val tokens = tokenize(query)
+        println("🔤 Tokens intent: $tokens")
         val inputIds = convertTokensToIds(tokens)
+        println("🔢 Input IDs: ${inputIds.take(10)}...")
         val attentionMask = createAttentionMask(inputIds)
 
         val predictions = runInference(inputIds, attentionMask)
+        println("🎯 Raw predictions: ${predictions.take(10)}...")
         return convertPredictionsToIntent(predictions)
     }
 
@@ -178,78 +171,49 @@ class IntentOnnxProcessor(private val context: Context) {
     }
 
     private fun runInference(inputIds: LongArray, attentionMask: LongArray): FloatArray {
-        val ortSession = this.ortSession ?: return FloatArray(0)
-        val ortEnvironment = this.ortEnvironment ?: return FloatArray(0)
+        val maxLen = metadata?.max_length ?: 128
+        val inputIdsBuffer = ByteBuffer.allocateDirect(4 * maxLen).order(ByteOrder.nativeOrder())
+        val attentionMaskBuffer = ByteBuffer.allocateDirect(4 * maxLen).order(ByteOrder.nativeOrder())
 
-        try {
-            // Create input tensors
-            val inputShape = longArrayOf(1, inputIds.size.toLong())
-
-            val inputIdsTensor = OnnxTensor.createTensor(
-                ortEnvironment,
-                LongBuffer.wrap(inputIds),
-                inputShape
-            )
-
-            val attentionMaskTensor = OnnxTensor.createTensor(
-                ortEnvironment,
-                LongBuffer.wrap(attentionMask),
-                inputShape
-            )
-
-            // Run inference
-            val inputs = mapOf(
-                "input_ids" to inputIdsTensor,
-                "attention_mask" to attentionMaskTensor
-            )
-
-            val result = ortSession.run(inputs)
-
-            // Get logits - untuk intent classification, output shape [1, num_classes]
-            val logits = result[0].value as Array<FloatArray>
-            val predictions = logits[0] // ambil batch pertama
-
-            // Cleanup
-            inputIdsTensor.close()
-            attentionMaskTensor.close()
-            result.close()
-
-            return predictions
-
-        } catch (e: Exception) {
-            println("❌ Intent inference error: ${e.message}")
-            e.printStackTrace()
-            return FloatArray(metadata?.label_list?.size ?: 0)
-        }
-    }
-
-    private fun convertPredictionsToIntent(predictions: FloatArray): IntentResult {
-        if (predictions.isEmpty()) {
-            return IntentResult("unknown", 0.0)
+        for (i in 0 until maxLen) {
+            inputIdsBuffer.putInt(inputIds[i].toInt())
+            attentionMaskBuffer.putInt(attentionMask[i].toInt())
         }
 
-        // Find the index with highest confidence
-        var maxIdx = 0
-        var maxVal = Float.NEGATIVE_INFINITY
+        inputIdsBuffer.rewind()
+        attentionMaskBuffer.rewind()
 
-        for (i in predictions.indices) {
-            if (predictions[i] > maxVal) {
-                maxVal = predictions[i]
-                maxIdx = i
+        val output = Array(1) { FloatArray(metadata?.label_list?.size ?: 0) }
+
+        val inputs = arrayOf<Any?>(null, null)
+        for (i in 0 until 2) {
+            val name = interpreter!!.getInputTensor(i).name()
+            if (name.contains("input_ids")) {
+                inputs[i] = inputIdsBuffer
+            } else if (name.contains("attention_mask")) {
+                inputs[i] = attentionMaskBuffer
             }
         }
 
-        // Apply softmax to get confidence score
-        val expSum = predictions.map { kotlin.math.exp(it.toDouble()) }.sum()
+        interpreter!!.runForMultipleInputsOutputs(inputs, mapOf(0 to output))
+
+        return output[0]
+    }
+
+    private fun convertPredictionsToIntent(predictions: FloatArray): IntentResult {
+        if (predictions.isEmpty()) return IntentResult("unknown", 0.0)
+
+        val maxIdx = predictions.indices.maxByOrNull { predictions[it] } ?: 0
+        val maxVal = predictions[maxIdx]
+
+        val expSum = predictions.sumOf { kotlin.math.exp(it.toDouble()) }
         val confidence = kotlin.math.exp(maxVal.toDouble()) / expSum
 
-        val intent = metadata?.id2label?.get(maxIdx.toString()) ?: "unknown"
-
-        return IntentResult(intent, confidence)
+        val label = metadata?.id2label?.get(maxIdx.toString()) ?: "unknown"
+        return IntentResult(label, confidence)
     }
 
     fun close() {
-        ortSession?.close()
-        ortEnvironment?.close()
+        interpreter?.close()
     }
 }
