@@ -32,11 +32,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sslythrrr.galeri.R
 import com.sslythrrr.galeri.ui.theme.BlueAccent
+import com.sslythrrr.galeri.ui.theme.DarkBackground
 import com.sslythrrr.galeri.ui.theme.GoldAccent
 import com.sslythrrr.galeri.ui.theme.LightBackground
+import com.sslythrrr.galeri.ui.theme.SurfaceDark
+import com.sslythrrr.galeri.ui.theme.SurfaceLight
 import com.sslythrrr.galeri.ui.theme.TextGray
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import kotlinx.coroutines.delay
+
 
 @Composable
 fun SplashScreen(
@@ -52,11 +56,10 @@ fun SplashScreen(
         listOf("setup model", "memuat media", "menghasilkan thumbnail", "menyiapkan aplikasi")
     val textIndex = remember { mutableIntStateOf(0) }
 
-    //val backgroundColor = if (isDarkTheme) DarkBackground else LightBackground
-    val backgroundColor = LightBackground
+    val backgroundColor = if (isDarkTheme) DarkBackground else LightBackground
+    //val backgroundColor = LightBackground
 
     LaunchedEffect(allMedia) {
-        //if (allMedia.isNotEmpty()) {
         isFirstInstall.value = viewModel.isFirstInstall(context)
         delay(250)
         isLoading.value = false
@@ -65,7 +68,6 @@ fun SplashScreen(
             viewModel.markFirstInstall(context)
         }
         onLoadComplete()
-        //}
 
     }
 
@@ -87,10 +89,10 @@ fun SplashScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                //painter = if (isDarkTheme) painterResource(R.drawable.ss_d) else painterResource(R.drawable.ss_l),
-                painter = painterResource(R.drawable.ss_l),
+                painter = if (isDarkTheme) painterResource(R.drawable.ss_d) else painterResource(R.drawable.ss_l),
+                //painter = painterResource(R.drawable.ss_l),
                 contentDescription = "App Logo",
-                modifier = Modifier.size(80.dp),
+                modifier = Modifier.size(90.dp),
                 tint = Color.Unspecified,
             )
 
@@ -113,10 +115,10 @@ fun SplashScreen(
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 CircularProgressIndicator(
-                    //color = if (isDarkTheme) GoldAccent else BlueAccent,
-                    color = GoldAccent,
-                    //trackColor = if (isDarkTheme) SurfaceLight else SurfaceDark,
-                    trackColor = BlueAccent,
+                    color = if (isDarkTheme) GoldAccent else BlueAccent,
+                    //color = GoldAccent,
+                    trackColor = if (isDarkTheme) SurfaceLight else SurfaceDark,
+                    //trackColor = BlueAccent,
                     strokeCap = StrokeCap.Butt
                 )
                 Spacer(modifier = Modifier.padding(bottom = 80.dp))
