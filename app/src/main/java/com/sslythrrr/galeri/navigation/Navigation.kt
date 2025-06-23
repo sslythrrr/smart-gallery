@@ -102,9 +102,6 @@ fun Navigation(
                     }
                 },
                 viewModel = viewModel,
-                onSettingsClick = {
-                    navController.navigate("settings")
-                },
                 isDarkTheme = isDarkTheme,
                 chatbotViewModel = chatbotViewModel,
                 navController = navController,
@@ -128,7 +125,16 @@ fun Navigation(
                 },
                 onShowAllImages = {
                     navController.navigate("filteredImages")
-                }
+                },
+                onThemeChange = { isDark ->
+                    themeViewModel.toggleTheme(isDark)
+                },
+                onAboutClick = {
+                    navController.navigate("about")
+                },
+                onContactClick = {
+                    navController.navigate("contact")
+                },
             )
         }
         composable(

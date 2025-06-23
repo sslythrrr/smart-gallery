@@ -1,5 +1,5 @@
 package com.sslythrrr.galeri.ui.screens
-// vv
+// vvc
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
@@ -26,17 +26,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,7 +59,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -65,10 +78,12 @@ import com.sslythrrr.galeri.ui.screens.mainscreen.Management
 import com.sslythrrr.galeri.ui.theme.BlueAccent
 import com.sslythrrr.galeri.ui.theme.DarkBackground
 import com.sslythrrr.galeri.ui.theme.GoldAccent
+import com.sslythrrr.galeri.ui.theme.GoldAccentDark
 import com.sslythrrr.galeri.ui.theme.LightBackground
 import com.sslythrrr.galeri.ui.theme.SurfaceDark
 import com.sslythrrr.galeri.ui.theme.SurfaceLight
 import com.sslythrrr.galeri.ui.theme.TextBlack
+import com.sslythrrr.galeri.ui.theme.TextGray
 import com.sslythrrr.galeri.ui.theme.TextGrayDark
 import com.sslythrrr.galeri.ui.theme.TextLightGray
 import com.sslythrrr.galeri.ui.theme.TextWhite
@@ -83,13 +98,15 @@ fun MainScreen(
     onMediaClick: (Media) -> Unit,
     onAlbumClick: (Album) -> Unit,
     viewModel: MediaViewModel,
-    onSettingsClick: () -> Unit,
     isDarkTheme: Boolean,
     chatbotViewModel: ChatbotViewModel,
     navController: NavController,
     onNavigationStateChange: (Boolean) -> Unit = {},
     onImageClick: (String) -> Unit = {},
-    onShowAllImages: () -> Unit = {}
+    onShowAllImages: () -> Unit = {},
+    onThemeChange: (Boolean) -> Unit,
+    onAboutClick: () -> Unit,
+    onContactClick: () -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 1)
     LaunchedEffect(pagerState.currentPage) {
@@ -164,6 +181,8 @@ fun MainScreen(
         // ...
     }
 
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -209,15 +228,140 @@ fun MainScreen(
                                 letterSpacing = 0.3.sp
                             )
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            var dropdownExpanded by remember { mutableStateOf(false) }
+
+                            Box {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = "Settings",
                                     tint = if (isDarkTheme) TextLightGray else TextBlack,
                                     modifier = Modifier
                                         .size(24.dp)
-                                        .clickable { onSettingsClick() })
+                                        .clickable { dropdownExpanded = true }
+                                )
+
+                                DropdownMenu(
+                                    expanded = dropdownExpanded,
+                                    onDismissRequest = { dropdownExpanded = false }
+                                ) {
+                                    if (pagerState.currentPage != 0) {
+                                        DropdownToggleItem(
+                                            icon = Icons.Default.DarkMode,
+                                            title = "Mode Gelap",
+                                            subtitle = if (isDarkTheme) "Aktif" else "Nonaktif",
+                                            isChecked = isDarkTheme,
+                                            onCheckedChange = {
+                                                onThemeChange(it)
+                                            },
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(1.dp)
+                                                .padding(horizontal = 16.dp)
+                                                .background(
+                                                    if (isDarkTheme) TextGray.copy(alpha = 0.2f) else TextGrayDark.copy(
+                                                        alpha = 0.1f
+                                                    )
+                                                )
+                                        )
+                                        DropdownClickableItem(
+                                            icon = Icons.Default.Contacts,
+                                            title = "Hubungi",
+                                            subtitle = "Umpan balik dan saran",
+                                            onClick = {
+                                                dropdownExpanded = false
+                                                onContactClick()
+                                            },
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(1.dp)
+                                                .padding(horizontal = 16.dp)
+                                                .background(
+                                                    if (isDarkTheme) TextGray.copy(alpha = 0.2f) else TextGrayDark.copy(
+                                                        alpha = 0.1f
+                                                    )
+                                                )
+                                        )
+                                        DropdownClickableItem(
+                                            icon = Icons.Default.Info,
+                                            title = "Tentang",
+                                            subtitle = "Versi, fitur, dan informasi lain",
+                                            onClick = {
+                                                dropdownExpanded = false
+                                                onAboutClick()
+                                            },
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                    }
+                                    if (pagerState.currentPage == 0) {
+                                        DropdownClickableItem(
+                                            icon = Icons.Filled.Delete,
+                                            title = "Hapus Pesan",
+                                            subtitle = "Bersihkan layar chatbot ",
+                                            onClick = {
+                                                showDeleteConfirmation = true
+                                            },
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                        if (showDeleteConfirmation) {
+                                            AlertDialog(
+                                                onDismissRequest = {
+                                                    showDeleteConfirmation = false
+                                                    dropdownExpanded = false
+                                                },
+                                                title = {
+                                                    Text(
+                                                        "Hapus",
+                                                        color = if (isDarkTheme) TextWhite else TextBlack
+                                                    )
+                                                },
+                                                text = {
+                                                    Text(
+                                                        "Anda yakin ingin menghapus pesan",
+                                                        color = if (isDarkTheme) TextWhite else TextBlack
+                                                    )
+                                                },
+                                                confirmButton = {
+                                                    Button(
+                                                        onClick = {
+                                                            chatbotViewModel.clearMessages()
+                                                            showDeleteConfirmation = false
+                                                            dropdownExpanded = false
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = Color.Red
+                                                        )
+                                                    ) {
+                                                        Text(
+                                                            "Hapus",
+                                                            color = TextWhite
+                                                        )
+                                                    }
+                                                },
+                                                dismissButton = {
+                                                    TextButton(onClick = {
+                                                        showDeleteConfirmation = false
+                                                        dropdownExpanded = false
+                                                    }) {
+                                                        Text(
+                                                            "Batal",
+                                                            color = if (isDarkTheme) TextGray else TextGrayDark
+                                                        )
+                                                    }
+                                                },
+                                                containerColor = if (isDarkTheme) SurfaceDark else SurfaceLight,
+                                                tonalElevation = 8.dp
+                                            )
+                                        }
+                                    }
+                                }
                             }
+
                         }
                     }
                 }
@@ -235,8 +379,8 @@ fun MainScreen(
                             modifier = Modifier.fillMaxSize(),
                             isDarkTheme = isDarkTheme,
                             chatbotViewModel = chatbotViewModel,
-                            onImageClick = onImageClick, // Pass parameter ini
-                            onShowAllImages = onShowAllImages // Pass parameter ini
+                            onImageClick = onImageClick,
+                            onShowAllImages = onShowAllImages
                         )
                     }
 
@@ -392,6 +536,104 @@ fun SelectionTopBar(
                         .size(24.dp)
                         .clickable { onDelete() })
             }
+        }
+    }
+}
+
+@Composable
+fun DropdownToggleItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    isDarkTheme: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = if (isDarkTheme) GoldAccent else BlueAccent,
+                modifier = Modifier.size(20.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column {
+                Text(
+                    text = title,
+                    color = if (isDarkTheme) TextWhite else TextBlack,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp
+                )
+                Text(
+                    text = subtitle,
+                    color = if (isDarkTheme) TextGray else TextGrayDark,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = GoldAccent,
+                checkedTrackColor = GoldAccentDark,
+                uncheckedThumbColor = if (isDarkTheme) TextGray else TextGrayDark,
+                uncheckedTrackColor = if (isDarkTheme) SurfaceDark else SurfaceLight
+            ),
+            modifier = Modifier.scale(0.8f)
+        )
+    }
+}
+
+@Composable
+fun DropdownClickableItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    isDarkTheme: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = if (isDarkTheme) GoldAccent else BlueAccent,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column {
+            Text(
+                text = title,
+                color = if (isDarkTheme) TextWhite else TextBlack,
+                fontWeight = FontWeight.Medium,
+                fontSize = 15.sp
+            )
+            Text(
+                text = subtitle,
+                color = if (isDarkTheme) TextGray else TextGrayDark,
+                fontSize = 13.sp
+            )
         }
     }
 }

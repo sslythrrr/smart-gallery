@@ -87,12 +87,6 @@ fun AboutScreen(
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            Text(
-                text = "Piece of Eden - 09 Juni 2025",
-                color = if (isDarkTheme) TextGray else TextGrayDark,
-                fontSize = 16.sp,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
             Spacer(modifier = Modifier.width(16.dp))
             Column(
                 modifier = Modifier
