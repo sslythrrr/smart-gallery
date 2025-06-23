@@ -19,19 +19,19 @@ class TextRecognizerHelper() {
     private val processedCache = mutableMapOf<String, List<DetectedText>>()
     private val maxCacheSize = 50
 
-    suspend fun detectTexts(imagePath: String): List<DetectedText> {
-        processedCache[imagePath]?.let { return it }
+    suspend fun detectTexts(path: String, uri: String): List<DetectedText> {
+        processedCache[path]?.let { return it }
         return try {
-            Log.d(tag, "Memulai text recognition pada: $imagePath")
+            Log.d(tag, "Memulai text recognition pada: $path")
 
             val options = BitmapFactory.Options().apply {
-                inSampleSize = 32
+                inSampleSize = 16
                 inPreferredConfig = Bitmap.Config.RGB_565
                 inJustDecodeBounds = false
             }
-            val bitmap = BitmapFactory.decodeFile(imagePath, options)
+            val bitmap = BitmapFactory.decodeFile(path, options)
             if (bitmap == null) {
-                Log.e(tag, "❌ Gagal membuka gambar: $imagePath")
+                Log.e(tag, "❌ Gagal membuka gambar: $path")
                 return emptyList()
             }
 
@@ -39,17 +39,17 @@ class TextRecognizerHelper() {
             val result = textRecognizer.process(image).await()
 
             if (result.text.isBlank()) {
-                Log.d(tag, "⚠️ Tidak ada teks terdeteksi pada gambar: $imagePath")
+                Log.d(tag, "⚠️ Tidak ada teks terdeteksi pada gambar: $path")
                 return emptyList()
             }
 
-            val detectedTexts = parseTextRecognitionResult(result, imagePath)
-            Log.d(tag, "✅ Berhasil mendeteksi ${detectedTexts.size} teks dari gambar: $imagePath")
+            val detectedTexts = parseTextRecognitionResult(result, uri)
+            Log.d(tag, "✅ Berhasil mendeteksi ${detectedTexts.size} teks dari gambar: $path")
 
             if (processedCache.size >= maxCacheSize) {
                 processedCache.clear()
             }
-            processedCache[imagePath] = detectedTexts
+            processedCache[path] = detectedTexts
 
             bitmap.recycle()
             detectedTexts
@@ -59,13 +59,14 @@ class TextRecognizerHelper() {
         }
     }
 
-    private fun parseTextRecognitionResult(result: Text, imagePath: String): List<DetectedText> {
+    private fun parseTextRecognitionResult(result: Text, uri: String): List<DetectedText> {
         val detectedTexts = mutableListOf<DetectedText>()
 
         if (result.text.isNotBlank()) {
             detectedTexts.add(
                 DetectedText(
-                    imagePath = imagePath,
+                    id = 0,
+                    uri = uri,
                     text = result.text.trim(),
                     type = "FULL_TEXT",
                     confidence = 1.0f,
@@ -80,7 +81,8 @@ class TextRecognizerHelper() {
             if (block.text.length >= 3) {
                 detectedTexts.add(
                     DetectedText(
-                        imagePath = imagePath,
+                        id = 0,
+                        uri = uri,
                         text = block.text.trim(),
                         type = "BLOCK",
                         confidence = calculateConfidence(),
@@ -94,7 +96,8 @@ class TextRecognizerHelper() {
                 if (isSignificantText(line.text)) {
                     detectedTexts.add(
                         DetectedText(
-                            imagePath = imagePath,
+                            id = 0,
+                            uri = uri,
                             text = line.text.trim(),
                             type = "LINE",
                             confidence = calculateConfidence(),
@@ -108,7 +111,8 @@ class TextRecognizerHelper() {
                     if (isKeywordCandidate(element.text)) {
                         detectedTexts.add(
                             DetectedText(
-                                imagePath = imagePath,
+                                id = 0,
+                                uri = uri,
                                 text = element.text.trim(),
                                 type = "ELEMENT",
                                 confidence = calculateConfidence(),
@@ -129,23 +133,6 @@ class TextRecognizerHelper() {
     }
 
     private fun calculateConfidence(): Float = 0.8f
-
-    internal fun isImageLikelyToContainText(imagePath: String): Boolean {
-        return try {
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            BitmapFactory.decodeFile(imagePath, options)
-
-            // Skip gambar yang terlalu kecil atau terlalu besar
-            val width = options.outWidth
-            val height = options.outHeight
-
-            width > 100 && height > 100 && width < 4000 && height < 4000
-        } catch (_: Exception) {
-            false
-        }
-    }
 
     private fun isSignificantText(text: String): Boolean {
         val trimmed = text.trim()

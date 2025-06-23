@@ -43,7 +43,7 @@ class ObjectDetector(private val context: Context) {
         }
     }
 
-    fun detectObjects(imagePath: String): List<DetectedObject> {
+    fun detectObjects(path: String, uri: String): List<DetectedObject> {
         synchronized(lock) {
             if (!isInitialized) {
                 Log.e(tag, "Object detector belum diinisialisasi!")
@@ -51,21 +51,21 @@ class ObjectDetector(private val context: Context) {
             }
 
             try {
-                val bitmap = loadAndResizeImage(imagePath)
+                val bitmap = loadAndResizeImage(path)
                 if (bitmap == null) {
-                    Log.e(tag, "❌ Gagal membuka gambar: $imagePath")
+                    Log.e(tag, "❌ Gagal membuka gambar: $path")
                     return emptyList()
                 }
 
                 val inputBuffer = convertBitmapToByteBuffer(bitmap)
                 val outputClasses = reusableOutputClasses
 
-                Log.d(tag, "Running inference pada gambar: $imagePath")
+                Log.d(tag, "Running inference pada gambar: $path")
                 tflite.run(inputBuffer, outputClasses)
 
                 return parseClassificationResults(
                     classes = outputClasses[0],
-                    imagePath = imagePath
+                    uri = uri
                 )
 
             } catch (e: Exception) {
@@ -137,7 +137,7 @@ class ObjectDetector(private val context: Context) {
 
     private fun parseClassificationResults(
         classes: FloatArray,
-        imagePath: String
+        uri: String
     ): List<DetectedObject> {
         val results = mutableListOf<DetectedObject>()
 
@@ -155,7 +155,8 @@ class ObjectDetector(private val context: Context) {
                 if (label != "Tidak Diketahui") {
                     results.add(
                         DetectedObject(
-                            imagePath = imagePath,
+                            id = 0,
+                            uri = uri,
                             label = label,
                             confidence = score
                         )
@@ -166,21 +167,21 @@ class ObjectDetector(private val context: Context) {
         return results
     }
 
-    private fun loadAndResizeImage(imagePath: String): Bitmap? {
+    private fun loadAndResizeImage(path: String): Bitmap? {
         return try {
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
-            BitmapFactory.decodeFile(imagePath, options)
+            BitmapFactory.decodeFile(path, options)
 
             options.inSampleSize = calculateInSampleSize(options, inputSize, inputSize)
             options.inJustDecodeBounds = false
             options.inMutable = true // untuk reuse di GPU delegate, dll
 
-            val bitmap = BitmapFactory.decodeFile(imagePath, options) ?: return null
+            val bitmap = BitmapFactory.decodeFile(path, options) ?: return null
             bitmap.scale(inputSize, inputSize, false)
         } catch (e: Exception) {
-            Log.e(tag, "❌ Gagal decode gambar: $imagePath", e)
+            Log.e(tag, "❌ Gagal decode gambar: $path", e)
             null
             null
         }

@@ -719,33 +719,31 @@ class MediaViewModel() : ViewModel() {
             .addTag("object_detector_work")
             .setInputData(workDataOf("needs_notification" to true))
             .build()
-        /*
-                // Text Recognizer Worker (setelah media scan selesai)
-                val textRecognitionWork = OneTimeWorkRequestBuilder<TextRecognizerWorker>()
-                    .setConstraints(constraints)
-                    .setBackoffCriteria(
-                        BackoffPolicy.LINEAR,
-                        WorkRequest.MIN_BACKOFF_MILLIS * 2,
-                        TimeUnit.MILLISECONDS
-                    )
-                    .addTag("text_recognizer_work")
-                    .setInputData(workDataOf("needs_notification" to true))
-                    .build()
-        */
+
+        val textRecognitionWork = OneTimeWorkRequestBuilder<TextRecognizerWorker>()
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.LINEAR,
+                WorkRequest.MIN_BACKOFF_MILLIS * 2,
+                TimeUnit.MILLISECONDS
+            )
+            .addTag("text_recognizer_work")
+            .setInputData(workDataOf("needs_notification" to true))
+            .build()
+
         WorkManager.getInstance(context)
             .beginUniqueWork(
                 "start_scanning",
                 ExistingWorkPolicy.KEEP,
                 mediaScanWork
             )
-            .then(listOf(objectDetectionWork,/*textRecognitionWork,*/ locationWork))
-            //.then(listOf(locationWork))
+            .then(listOf(objectDetectionWork, textRecognitionWork, locationWork))
             .enqueue()
     }
 
     fun loadAllMedia(context: Context) {
         _mediaPager.value = Pager(
-            config = PagingConfig(pageSize = 50),
+            config = PagingConfig(pageSize = 100),
             pagingSourceFactory = {
                 MediaPagingSource(context = context)
             }

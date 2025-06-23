@@ -15,6 +15,9 @@ import com.sslythrrr.galeri.data.AppDatabase
 import com.sslythrrr.galeri.data.entity.ScannedImage
 import com.sslythrrr.galeri.ui.utils.Notification
 import java.util.Calendar
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class MediaScanWorker(
     context: Context,
@@ -22,7 +25,7 @@ class MediaScanWorker(
 ) : CoroutineWorker(context, workerParams) {
     private val tag = "MediaScanWorker"
     private val imageDao = AppDatabase.getInstance(context).scannedImageDao()
-    private val batchSize = 500
+    private val batchSize = 100
     private val notificationId = Notification.MEDIA_SCAN_NOTIFICATION_ID
 
     override suspend fun doWork(): Result {
@@ -154,38 +157,39 @@ class MediaScanWorker(
         var processedImages = 0
 
         totalBatches.forEach { batch ->
-            val scannedImages = mutableListOf<ScannedImage>()
+            val scannedImages = coroutineScope {
+                batch.map { imageInfo ->
+                    async {
+                        try {
+                            val (year, month) = formatDate(imageInfo.date)
+                            val latLng = getLatLongFromExif(applicationContext, imageInfo.uri)
 
-            for (imageInfo in batch) {
-                try {
-                    val (year, month) = formatDate(imageInfo.date)
-                    val latLng = getLatLongFromExif(applicationContext, imageInfo.uri)
-
-                    val image = ScannedImage(
-                        uri = imageInfo.uri.toString(),
-                        path = imageInfo.path,
-                        nama = imageInfo.name,
-                        ukuran = imageInfo.size,
-                        type = imageInfo.type,
-                        album = imageInfo.album,
-                        resolusi = "${imageInfo.width}x${imageInfo.height}",
-                        tanggal = imageInfo.date,
-                        year = year,
-                        month = month,
-                        day = Calendar.getInstance().apply { timeInMillis = imageInfo.date }
-                            .get(Calendar.DAY_OF_MONTH),
-                        latitude = latLng?.first,
-                        longitude = latLng?.second,
-                        isFavorite = false,
-                        isArchive = false,
-                        isDeleted = false,
-                        deletedAt = null
-                    )
-                    scannedImages.add(image)
-
-                } catch (e: Exception) {
-                    Log.e(tag, "Error processing image metadata: ${imageInfo.uri}", e)
-                }
+                            ScannedImage(
+                                uri = imageInfo.uri.toString(),
+                                path = imageInfo.path,
+                                nama = imageInfo.name,
+                                ukuran = imageInfo.size,
+                                type = imageInfo.type,
+                                album = imageInfo.album,
+                                resolusi = "${imageInfo.width}x${imageInfo.height}",
+                                tanggal = imageInfo.date,
+                                tahun = year,
+                                bulan = month,
+                                hari = Calendar.getInstance().apply { timeInMillis = imageInfo.date }
+                                    .get(Calendar.DAY_OF_MONTH),
+                                latitude = latLng?.first,
+                                longitude = latLng?.second,
+                                isFavorite = false,
+                                isArchive = false,
+                                isDeleted = false,
+                                deletedAt = null
+                            )
+                        } catch (e: Exception) {
+                            Log.e(tag, "Error processing image metadata: ${imageInfo.uri}", e)
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
             if (scannedImages.isNotEmpty()) {
@@ -245,11 +249,30 @@ class MediaScanWorker(
         val date: Long
     )
 
-    private fun formatDate(timestamp: Long): Pair<Int, Int> {
+    private fun formatDate(timestamp: Long): Pair<Int, String> {
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val monthNumber = calendar.get(Calendar.MONTH) + 1
         return Pair(
             calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH) + 1
+            getMonthName(monthNumber)
         )
+    }
+
+    private fun getMonthName(month: Int): String {
+        return when (month) {
+            1 -> "Januari"
+            2 -> "Februari"
+            3 -> "Maret"
+            4 -> "April"
+            5 -> "Mei"
+            6 -> "Juni"
+            7 -> "Juli"
+            8 -> "Agustus"
+            9 -> "September"
+            10 -> "Oktober"
+            11 -> "November"
+            12 -> "Desember"
+            else -> "Tidak Diketahui"
+        }
     }
 }

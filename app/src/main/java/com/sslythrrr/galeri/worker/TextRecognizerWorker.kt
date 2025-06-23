@@ -26,14 +26,15 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
     private val scanStatusDao = AppDatabase.getInstance(context).scanStatusDao()
     private val textRecognizer = TextRecognizerHelper()
     private val batchSize = 20
+    private val workerName = "TEXT_RECOGNIZER"
 
     private fun canRetryWork(): Boolean {
-        val status = scanStatusDao.getScanStatus("TEXT_RECOGNIZER")
+        val status = scanStatusDao.getScanStatus(workerName)
         return status?.status != "COMPLETED"
     }
 
     private fun shouldSkipWork(): Boolean {
-        val status = scanStatusDao.getScanStatus("TEXT_RECOGNIZER")
+        val status = scanStatusDao.getScanStatus(workerName)
         return status?.status == "COMPLETED" && runAttemptCount == 0
     }
 
@@ -75,7 +76,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
             //.filter { textRecognizer.isImageLikelyToContainText(it) }
 
             // Check if resuming from previous run
-            val existingStatus = scanStatusDao.getScanStatus("TEXT_RECOGNIZER")
+            val existingStatus = scanStatusDao.getScanStatus(workerName)
             val isResuming = existingStatus?.status == "RUNNING"
 
             if (isResuming) {
@@ -95,18 +96,18 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
             Log.d(tag, "Ditemukan ${pathsToProcess.size} gambar untuk diproses text recognition")
 
             // Update status awal
-            updateScanStatus("TEXT_RECOGNIZER", pathsToProcess.size, 0, "RUNNING")
+            updateScanStatus(pathsToProcess.size, 0, "RUNNING")
 
             // Proses batch per batch
             pathsToProcess.chunked(batchSize).forEachIndexed { index, batch ->
                 val detectedTexts = withContext(Dispatchers.Default) {
-                    batch.map { path ->
+                    batch.map { uri ->
                         async {
                             try {
-                                val path = getPathFromUri(path) ?: path
-                                textRecognizer.detectTexts(path)
+                                val realPath = getPathFromUri(uri) ?: uri
+                                textRecognizer.detectTexts(realPath, uri)
                             } catch (e: Exception) {
-                                Log.e(tag, "Error recognizing text for image: $path", e)
+                                Log.e(tag, "Error recognizing text for image: $uri", e)
                                 emptyList()
                             }
                         }
@@ -122,7 +123,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
                 val actualProcessed = minOf(processedCount, pathsToProcess.size)
                 val progressPercent = actualProcessed * 100 / pathsToProcess.size
 
-                updateScanStatus("TEXT_RECOGNIZER", pathsToProcess.size, actualProcessed, "RUNNING")
+                updateScanStatus(pathsToProcess.size, actualProcessed, "RUNNING")
                 setProgress(workDataOf("progress" to progressPercent))
 
                 if (needsNotification) {
@@ -141,7 +142,6 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
 
             // Update final status
             updateScanStatus(
-                "TEXT_RECOGNIZER",
                 pathsToProcess.size,
                 pathsToProcess.size,
                 "COMPLETED"
@@ -160,7 +160,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
             return Result.success()
         } catch (e: Exception) {
             Log.e(tag, "❌ Error during text recognition", e)
-            updateScanStatus("TEXT_RECOGNIZER", 0, 0, "FAILED")
+            updateScanStatus(0, 0, "FAILED")
 
             if (needsNotification) {
                 Notification.finishNotification(
@@ -214,7 +214,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun updateScanStatus(workerName: String, total: Int, processed: Int, status: String) {
+    private fun updateScanStatus(total: Int, processed: Int, status: String) {
         try {
             val scanStatus = ScanStatus(
                 workerName = workerName,

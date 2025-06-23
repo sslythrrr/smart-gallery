@@ -25,14 +25,15 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
     private val scanStatusDao = AppDatabase.getInstance(context).scanStatusDao()
     private val objectDetector = ObjectDetector(context)
     private val batchSize = 50
+    private val workerName = "OBJECT_DETECTOR"
 
     private fun shouldSkipWork(): Boolean {
-        val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
+        val status = scanStatusDao.getScanStatus(workerName)
         return status?.status == "COMPLETED"
     }
 
     private fun getCurrentProgress(): Pair<Int, Int> {
-        val status = scanStatusDao.getScanStatus("OBJECT_DETECTOR")
+        val status = scanStatusDao.getScanStatus(workerName)
         return if (status != null && status.status == "RUNNING") {
             Pair(status.totalItems, status.processedItems)
         } else {
@@ -55,19 +56,14 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
 
         try {
             objectDetector.initialize()
-
-            // Ambil semua path gambar
             val scannedPaths = imageDao.getAllScannedUris()
             val processedPaths = objectDao.getAllProcessedPaths().toSet()
             val pathsToProcess = scannedPaths.filter { it !in processedPaths }
-
-            // Cek progress sebelumnya
             val (previousTotal, previousProcessed) = getCurrentProgress()
             val isResuming = previousTotal > 0 && previousProcessed > 0 && previousProcessed < previousTotal
 
             if (isResuming) {
                 Log.d(tag, "🔄 RESUME: Melanjutkan dari $previousProcessed/$previousTotal")
-                // Hitung ulang paths yang belum diproses
                 val actualProcessedPaths = objectDao.getAllProcessedPaths().toSet()
                 val remainingPaths = scannedPaths.filter { it !in actualProcessedPaths }
 
@@ -75,30 +71,27 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
 
                 if (remainingPaths.isEmpty()) {
                     Log.d(tag, "✅ Ternyata sudah selesai semua!")
-                    updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
+                    updateScanStatus(scannedPaths.size, scannedPaths.size, "COMPLETED")
                     return Result.success()
                 }
             }
 
             if (pathsToProcess.isEmpty()) {
                 Log.d(tag, "✅ Tidak ada gambar yang perlu diproses")
-                updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
+                updateScanStatus(scannedPaths.size, scannedPaths.size, "COMPLETED")
                 return Result.success()
             }
 
             Log.d(tag, "📋 Total gambar: ${scannedPaths.size}, Belum diproses: ${pathsToProcess.size}")
+            updateScanStatus(scannedPaths.size, scannedPaths.size - pathsToProcess.size, "RUNNING")
 
-            // Update status dengan data yang benar
-            updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size - pathsToProcess.size, "RUNNING")
-
-            // Proses batch per batch
             pathsToProcess.chunked(batchSize).forEachIndexed { index, batch ->
                 val detectedObjects = coroutineScope {
                     batch.map { path ->
                         async {
                             val realPath = getPathFromUri(path) ?: path
                             try {
-                                val objects = objectDetector.detectObjects(realPath)
+                                val objects = objectDetector.detectObjects(realPath, path)
                                 if (objects.isNotEmpty()) {
                                     Log.d(tag, "✅ Terdeteksi ${objects.size} objek pada $realPath")
                                 } else {
@@ -121,7 +114,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                 val totalProcessed = (scannedPaths.size - pathsToProcess.size) + batchProcessed
                 val progressPercent = (totalProcessed * 100) / scannedPaths.size
 
-                updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, totalProcessed, "RUNNING")
+                updateScanStatus(scannedPaths.size, totalProcessed, "RUNNING")
                 setProgress(workDataOf("progress" to progressPercent))
 
                 Log.d(tag, "📊 Progress: $totalProcessed/${scannedPaths.size} ($progressPercent%)")
@@ -137,7 +130,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                     )
                 }
             }
-            updateScanStatus("OBJECT_DETECTOR", scannedPaths.size, scannedPaths.size, "COMPLETED")
+            updateScanStatus(scannedPaths.size, scannedPaths.size, "COMPLETED")
             Log.d(tag, "✅ Object detection selesai, ${pathsToProcess.size} gambar diproses.")
 
             if (needsNotification) {
@@ -152,7 +145,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
             return Result.success()
         } catch (e: Exception) {
             Log.e(tag, "❌ Error during object detection", e)
-            updateScanStatus("OBJECT_DETECTOR", 0, 0, "FAILED")
+            updateScanStatus(0, 0, "FAILED")
 
             if (needsNotification) {
                 Notification.finishNotification(
@@ -193,12 +186,6 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
         try {
             AppDatabase.getInstance(applicationContext).runInTransaction {
                 objectDao.insertAll(detectedObjects)
-                detectedObjects.forEach {
-                    Log.d(
-                        tag,
-                        "Disimpan objek terdeteksi: ${it.label} (${it.confidence}) untuk ${it.imagePath}"
-                    )
-                }
             }
             Log.d(tag, "✅ Database berhasil diupdate: ${detectedObjects.size} objek")
         } catch (e: Exception) {
@@ -207,7 +194,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun updateScanStatus(workerName: String, total: Int, processed: Int, status: String) {
+    private fun updateScanStatus(total: Int, processed: Int, status: String) {
         try {
             val scanStatus = ScanStatus(
                 workerName = workerName,
