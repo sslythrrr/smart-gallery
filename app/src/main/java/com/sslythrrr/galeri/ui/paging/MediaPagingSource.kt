@@ -2,6 +2,8 @@ package com.sslythrrr.galeri.ui.paging
 
 import android.content.ContentUris
 import android.content.Context
+import android.database.Cursor
+import android.net.Uri
 import android.provider.MediaStore
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
@@ -17,23 +19,30 @@ class MediaPagingSource(
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Media> {
         return try {
             val page = params.key ?: 0
+            val pageSize = params.loadSize
+            val limit = params.loadSize
+            val offset = (page) * limit
+
 
             val mediaList = mutableListOf<Media>()
 
-            loadImagesPage(mediaList)
-            loadVideosPage(mediaList)
+            loadImagesPage(mediaList, page, pageSize)
+            loadVideosPage(mediaList, page, pageSize)
 
             val sortedMedia = mediaList.sortedByDescending { it.dateTaken }
+
+            val nextKey = if (sortedMedia.size < limit) null else page + 1
 
             LoadResult.Page(
                 data = sortedMedia,
                 prevKey = if (page == 0) null else page - 1,
-                nextKey = if (sortedMedia.isEmpty()) null else page + 1
+                nextKey = nextKey
             )
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
     }
+
 
     override fun getRefreshKey(state: PagingState<Int, Media>): Int? {
         return state.anchorPosition?.let { anchorPosition ->
@@ -42,8 +51,8 @@ class MediaPagingSource(
         }
     }
 
-    private fun loadImagesPage(mediaList: MutableList<Media>) {
-        val imageProjection = MediaViewModel.IMAGE_PROJECTION
+    private fun loadImagesPage(mediaList: MutableList<Media>, page: Int, limit: Int) {
+        val offset = page * limit
 
         val selection = if (bucketId != null) {
             "${MediaStore.Images.Media.BUCKET_ID} = ?"
@@ -53,13 +62,17 @@ class MediaPagingSource(
             arrayOf(bucketId.toString())
         } else null
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            imageProjection,
-            selection,
-            selectionArgs,
-            "${MediaStore.Images.Media.DATE_TAKEN} DESC"
-        )?.use { cursor ->
+        val cursor = queryMedia(
+            uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection = MediaViewModel.IMAGE_PROJECTION,
+            selection = selection,
+            selectionArgs = selectionArgs,
+            sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC",
+            limit = limit,
+            offset = offset
+        )
+
+        cursor?.use { cursor ->
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
                 val title =
@@ -102,8 +115,8 @@ class MediaPagingSource(
         }
     }
 
-    private fun loadVideosPage(mediaList: MutableList<Media>) {
-        val videoProjection = MediaViewModel.VIDEO_PROJECTION
+    private fun loadVideosPage(mediaList: MutableList<Media>, page: Int, limit: Int) {
+        val offset = page * limit
 
         val selection = if (bucketId != null) {
             "${MediaStore.Video.Media.BUCKET_ID} = ?"
@@ -113,13 +126,17 @@ class MediaPagingSource(
             arrayOf(bucketId.toString())
         } else null
 
-        context.contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            videoProjection,
-            selection,
-            selectionArgs,
-            "${MediaStore.Video.Media.DATE_TAKEN} DESC"
-        )?.use { cursor ->
+        val cursor = queryMedia(
+            uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            projection = MediaViewModel.VIDEO_PROJECTION,
+            selection = selection,
+            selectionArgs = selectionArgs,
+            sortOrder = "${MediaStore.Video.Media.DATE_TAKEN} DESC",
+            limit = limit,
+            offset = offset
+        )
+
+        cursor?.use { cursor ->
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
                 val title =
@@ -163,5 +180,28 @@ class MediaPagingSource(
             }
         }
     }
+
+    private fun queryMedia(
+        uri: Uri,
+        projection: Array<String>,
+        selection: String?,
+        selectionArgs: Array<String>?,
+        sortOrder: String,
+        limit: Int,
+        offset: Int
+    ): Cursor? {
+        val limitedUri = uri.buildUpon()
+            .appendQueryParameter("limit", "$limit offset $offset")
+            .build()
+
+        return context.contentResolver.query(
+            limitedUri,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )
+    }
+
 
 }

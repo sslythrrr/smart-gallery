@@ -49,10 +49,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MediaViewModel() : ViewModel() {
-    fun initContext(context: Context) {
-        context.applicationContext
-    }
-
     // UI
     private var _mediaPager = MutableStateFlow<Pager<Int, Media>?>(null)
     val mediaPager: StateFlow<Pager<Int, Media>?> = _mediaPager.asStateFlow()
@@ -406,7 +402,6 @@ class MediaViewModel() : ViewModel() {
             )
 
         _mediaPager.value = pager
-        _isLoading.value = false
         loadAlbums(context)
     }
 
@@ -743,7 +738,7 @@ class MediaViewModel() : ViewModel() {
 
     fun loadAllMedia(context: Context) {
         _mediaPager.value = Pager(
-            config = PagingConfig(pageSize = 100),
+            config = PagingConfig(pageSize = 50),
             pagingSourceFactory = {
                 MediaPagingSource(context = context)
             }

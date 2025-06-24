@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        private const val USE_PREPOPULATED_DB = false// false utk prod
+        private const val USE_PREPOPULATED_DB = true// false utk prod
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {

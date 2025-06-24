@@ -6,12 +6,10 @@ import androidx.lifecycle.ViewModelProvider
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 
 class MediaFactory(
-    private val context: Context
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MediaViewModel::class.java)) {
             val viewModel = MediaViewModel()
-            viewModel.initContext(context.applicationContext)
             @Suppress("UNCHECKED_CAST")
             return viewModel as T
         }
