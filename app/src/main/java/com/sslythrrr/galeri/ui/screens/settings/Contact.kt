@@ -100,7 +100,7 @@ fun ContactScreen(
             SocialMediaLink(
                 iconRes = R.drawable.gh,
                 title = "Sslythrrr",
-                onClick = { uriHandler.openUri("https://github.com/baechuxs") },
+                onClick = { uriHandler.openUri("https://github.com/sslythrrr") },
                 isDarkTheme = isDarkTheme
             )
             SocialMediaLink(

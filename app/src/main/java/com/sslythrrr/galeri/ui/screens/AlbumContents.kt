@@ -62,6 +62,8 @@ import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,12 +85,12 @@ fun AlbumDetailScreen(
     LaunchedEffect(lazyPagingItems) {
         lazyPagingItems?.let { pagingItems ->
             snapshotFlow { pagingItems.itemSnapshotList.items }
-                .collectLatest { items ->
-                    viewModel.setPagedMedia(items)
-                    if (items.isNotEmpty()) {
-                        delay(200)
-                        isLoading = false
-                    }
+                .map { it.map { media -> media.id } } // hanya id
+                .distinctUntilChanged()
+                .collectLatest { ids ->
+                    viewModel.setPagedMedia(lazyPagingItems.itemSnapshotList.items)
+                    delay(200)
+                    isLoading = false
                 }
         }
     }

@@ -1,7 +1,9 @@
 package com.sslythrrr.galeri.ui.media
 
 import android.net.Uri
+import androidx.compose.runtime.Stable
 
+@Stable
 data class Media(
     val id: Long,
     val title: String,
@@ -26,6 +28,7 @@ enum class MediaType {
     IMAGE, VIDEO
 }
 
+@Stable
 data class Album(
     val id: Long,
     val name: String,

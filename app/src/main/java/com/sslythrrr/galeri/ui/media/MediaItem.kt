@@ -1,6 +1,10 @@
 package com.sslythrrr.galeri.ui.media
 //mt10
+import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -19,6 +23,8 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,11 +33,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
-import coil.decode.VideoFrameDecoder
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.sslythrrr.galeri.ui.theme.SurfaceLight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun MediaThumbnail(
@@ -43,20 +53,28 @@ fun MediaThumbnail(
     val context = LocalContext.current
 
     Box(modifier = modifier.background(placeholderColor)) {
+        val displayUri = remember(context, uri, mediaType) {
+            if (mediaType == MediaType.VIDEO) {
+                rememberVideoThumbnailUri(context, uri.hashCode().toLong(), uri)
+            } else {
+                uri
+            }
+        }
+        LaunchedEffect(uri, mediaType) {
+            if (mediaType == MediaType.VIDEO) {
+                generateVideoThumbnailIfNeeded(context, uri.hashCode().toLong(), uri)
+            }
+        }
+
         AsyncImage(
             model = ImageRequest.Builder(context)
-                .data(uri)
+                .data(displayUri)
                 .crossfade(true)
                 .size(200, 200)
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
                 .placeholder(placeholderColor.toArgb().toDrawable())
                 .error(placeholderColor.toArgb().toDrawable())
-                .apply {
-                    if (mediaType == MediaType.VIDEO) {
-                        decoderFactory(VideoFrameDecoder.Factory())
-                    }
-                }
                 .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
@@ -150,6 +168,38 @@ fun MediaItem(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+private fun rememberVideoThumbnailUri(context: Context, mediaId: Long, videoUri: Uri): Uri {
+    val cacheDir = File(context.filesDir, "thumbs")
+    val file = File(cacheDir, "video_thumb_$mediaId.png")
+
+    return if (file.exists()) file.toUri() else videoUri
+}
+
+private suspend fun generateVideoThumbnailIfNeeded(context: Context, mediaId: Long, videoUri: Uri) {
+    withContext(Dispatchers.IO) {
+        val cacheDir = File(context.filesDir, "thumbs")
+        val file = File(cacheDir, "video_thumb_$mediaId.png")
+
+        if (!file.exists()) {
+            try {
+                cacheDir.mkdirs()
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(context, videoUri)
+                val frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                retriever.release()
+
+                frame?.let {
+                    FileOutputStream(file).use { out ->
+                        it.compress(Bitmap.CompressFormat.PNG, 90, out)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ThumbnailHelper", "Gagal buat thumbnail video: ${e.message}")
             }
         }
     }

@@ -35,9 +35,7 @@ import java.io.File
 class MainActivity : ComponentActivity() {
     private lateinit var mediaViewModel: MediaViewModel
     private val viewModel: MediaViewModel by viewModels {
-        MediaFactory(
-            applicationContext
-        )
+        MediaFactory()
     }
     private val themeViewModel: ThemeViewModel by viewModels {
         ThemeFactory(applicationContext)

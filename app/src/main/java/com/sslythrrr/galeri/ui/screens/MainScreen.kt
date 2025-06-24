@@ -109,11 +109,7 @@ fun MainScreen(
     onContactClick: () -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 1)
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage == 1) {
-            viewModel.setCurrentAlbum(null, context)
-        }
-    }
+
 
     var isNavigatingBack by remember { mutableStateOf(false) }
 
@@ -389,7 +385,9 @@ fun MainScreen(
                             Column(modifier = Modifier.fillMaxSize()) {
                                 val mediaPager by viewModel.mediaPager.collectAsState()
                                 val albumsState by viewModel.albums.collectAsState()
-                                val lazyPagingItems = mediaPager?.flow?.collectAsLazyPagingItems()
+                                val lazyPagingItems = remember(mediaPager) {
+                                    mediaPager?.flow
+                                }?.collectAsLazyPagingItems()
 
                                 GalleryScreen(
                                     lazyPagingItems = lazyPagingItems,
