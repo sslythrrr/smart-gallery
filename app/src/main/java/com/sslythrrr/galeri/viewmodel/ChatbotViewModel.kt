@@ -191,7 +191,7 @@ class ChatbotViewModel : ViewModel() {
         }
         if (intentResult?.intent == "cari_gambar") {
             val entities = nerResult?.entities
-            if (entities != null && entities.isNotEmpty()) {
+            if (entities != null) {
                 val filteredImages = filterByNER(entities)
                 setAllFilteredImages(filteredImages)
 
@@ -236,6 +236,9 @@ class ChatbotViewModel : ViewModel() {
             } else {
                 responseBuilder.append("❓ Silakan sebutkan kriteria pencarian yang lebih spesifik, misalnya: 'cari gambar kucing di album liburan' atau 'cari foto dari tahun 2023'")
             }
+        }
+        if (intentResult?.intent == "bantuan") {
+            responseBuilder.append("Berikut adalah cara menggunakan aplikasi ini:\n")
         }
         val botMessage = ChatMessage(
             text = responseBuilder.toString(),
