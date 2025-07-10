@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.sslythrrr.galeri.ui.media.Media
 import com.sslythrrr.galeri.ui.media.MediaGrid
@@ -66,6 +67,15 @@ import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import androidx.paging.filter
+import com.sslythrrr.galeri.data.AppDatabase
+import com.sslythrrr.galeri.data.entity.ScannedImage
+import com.sslythrrr.galeri.ui.media.MediaGridLegacy
+import com.sslythrrr.galeri.ui.media.MediaType
+import com.sslythrrr.galeri.viewmodel.UiModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 @Composable
 fun LargeSizeMediaScreen(
@@ -75,42 +85,30 @@ fun LargeSizeMediaScreen(
     viewModel: MediaViewModel,
     isDarkTheme: Boolean
 ) {
-    val mediaPager by viewModel.mediaPager.collectAsState()
-    val lazyPagingItems = mediaPager?.flow?.collectAsLazyPagingItems()
     var isLoading by remember { mutableStateOf(true) }
+    var largeMediaList by remember { mutableStateOf<List<Media>>(emptyList()) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         isLoading = true
-        viewModel.loadAllMedia(context)
-        delay(50)
-    }
-
-    LaunchedEffect(lazyPagingItems) {
-        lazyPagingItems?.let { pagingItems ->
-            snapshotFlow { pagingItems.itemSnapshotList.items }
-                .collectLatest { items ->
-                    // Filter media dengan ukuran >= 10MB
-                    val filteredItems = items.filter { media ->
-                        val sizeInMB = media.size / (1024 * 1024).toDouble()
-                        sizeInMB >= 10
-                    }
-                    viewModel.setPagedMedia(filteredItems)
-                    if (filteredItems.isNotEmpty()) {
-                        delay(200)
-                        isLoading = false
-                    } else {
-                        isLoading = false
-                    }
-                }
+        // Ambil data dari database yang sudah punya thumbnail path
+        val allMediaFromDb = withContext(Dispatchers.IO) {
+             AppDatabase.getInstance(context).scannedImageDao().getAllScannedImages()
         }
+        largeMediaList = allMediaFromDb.filter {
+            val sizeInMB = it.ukuran / (1024.0 * 1024.0)
+            sizeInMB >= 10
+        }.map { scannedImage ->
+            // Ubah dari ScannedImage (DB) ke Media (UI)
+            scannedImage.toMedia()
+        }
+        isLoading = false
     }
-
     val pagedMedia by viewModel.pagedMedia.collectAsState()
     val sections = sizeSection(pagedMedia)
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMedia by viewModel.selectedMedia.collectAsState()
-    val context = LocalContext.current
 
     val handleMediaLongClick: (Media) -> Unit = { media ->
         if (!isSelectionMode) {
@@ -162,7 +160,10 @@ fun LargeSizeMediaScreen(
                         onClearSelection = { viewModel.clearSelection() },
                         onDelete = confirmDelete,
                         onShare = shareSelectedMedia,
-                        isDarkTheme = isDarkTheme
+                        isDarkTheme = isDarkTheme,
+                        onAddToCollection = {
+                            viewModel.loadCollections(context)
+                        }
                     )
                 } else {
                     TopAppBar(
@@ -200,71 +201,32 @@ fun LargeSizeMediaScreen(
             }
         }
     ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (isDarkTheme) DarkBackground else LightBackground),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = if (isDarkTheme) GoldAccent else BlueAccent,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Memuat media berukuran besar...",
-                        color = if (isDarkTheme) TextLightGray else TextGrayDark,
-                        fontSize = 16.sp
-                    )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(if (isDarkTheme) DarkBackground else LightBackground)
+        ) {
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-            }
-        } else {
-            if (sections.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(if (isDarkTheme) DarkBackground else LightBackground),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            Icons.Default.FilePresent,
-                            contentDescription = null,
-                            tint = if (isDarkTheme) TextLightGray else TextGrayDark,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Tidak ada media berukuran besar",
-                            color = if (isDarkTheme) TextLightGray else TextGrayDark,
-                            fontSize = 16.sp
-                        )
-                    }
+            } else if (largeMediaList.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Tidak ada media berukuran besar.")
                 }
             } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .background(if (isDarkTheme) DarkBackground else LightBackground)
-                ) {
-                    MediaGrid(
-                        sections = sections,
-                        onMediaClick = handleMediaClick,
-                        isDarkTheme = isDarkTheme,
-                        selectedMedia = selectedMedia,
-                        onLongClick = handleMediaLongClick,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                // Kelompokkan list menjadi sections
+                val sections = sizeSection(largeMediaList)
+                // Gunakan MediaGridLegacy yang menerima List<SectionItem>
+                MediaGridLegacy(
+                    sections = sections,
+                    onMediaClick = handleMediaClick,
+                    isDarkTheme = isDarkTheme,
+                    selectedMedia = selectedMedia,
+                    onLongClick = handleMediaLongClick,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }
@@ -299,4 +261,23 @@ fun sizeSection(mediaList: List<Media>): List<SectionItem> {
     return sections.flatMap { (title, media) ->
         listOf(SectionItem.Header(title)) + media.map { SectionItem.MediaItem(it) }
     }
+}
+
+private fun ScannedImage.toMedia(): Media {
+    return Media(
+        id = this.uri.hashCode().toLong(),
+        title = this.nama,
+        uri = this.uri.toUri(),
+        type = if (this.type.startsWith("video")) MediaType.VIDEO else MediaType.IMAGE,
+        albumId = this.album.hashCode().toLong(),
+        albumName = this.album,
+        dateTaken = this.tanggal,
+        dateAdded = this.tanggal,
+        size = this.ukuran,
+        relativePath = this.path,
+        thumbnailPath = this.thumbnailPath, // <-- Path thumbnail dibawa
+        isFavorite = this.isFavorite,
+        width = this.resolusi.substringBefore("x").toIntOrNull() ?: 0,
+        height = this.resolusi.substringAfter("x").toIntOrNull() ?: 0
+    )
 }

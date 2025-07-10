@@ -65,7 +65,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
 
         try {
             // Ambil semua path gambar yang sudah discan metadata-nya
-            val scannedPaths = imageDao.getAllScannedUris()
+            val scannedPaths = imageDao. getAllImageUris()
 
             // Ambil semua path gambar yang sudah dikenali teksnya
             val processedPaths = textDao.getAllProcessedPaths().toSet()

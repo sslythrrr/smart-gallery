@@ -14,7 +14,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 3
-        versionName = "2025.06.24.meteora"
+        versionName = "2025.07.06.drogon"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.material3)
     implementation (libs.androidx.work.runtime.ktx)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
@@ -88,11 +89,12 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation (libs.coil)
     implementation (libs.kotlinx.coroutines.play.services)
-
+    implementation(libs.androidx.room.paging)
 
     //modelcv
     implementation (libs.text.recognition)
     implementation (libs.litert)
+    implementation (libs.litert.support)
 
     // Paging 3
     implementation (libs.androidx.paging.runtime.ktx)

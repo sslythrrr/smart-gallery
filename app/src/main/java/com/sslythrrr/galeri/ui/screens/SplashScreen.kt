@@ -19,8 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,10 +35,11 @@ import com.sslythrrr.galeri.ui.theme.GoldAccent
 import com.sslythrrr.galeri.ui.theme.LightBackground
 import com.sslythrrr.galeri.ui.theme.SurfaceDark
 import com.sslythrrr.galeri.ui.theme.SurfaceLight
+import com.sslythrrr.galeri.ui.theme.TextBlack
 import com.sslythrrr.galeri.ui.theme.TextGray
+import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import kotlinx.coroutines.delay
-
 
 @Composable
 fun SplashScreen(
@@ -49,35 +48,25 @@ fun SplashScreen(
     onLoadComplete: () -> Unit,
     isDarkTheme: Boolean
 ) {
-    val allMedia by viewModel.mediaPager.collectAsState()
-    val isLoading = remember { mutableStateOf(true) }
-    val isFirstInstall = remember { mutableStateOf(true) }
-    val loadingText =
-        listOf("setup model", "memuat media", "menghasilkan thumbnail", "menyiapkan aplikasi")
-    val textIndex = remember { mutableIntStateOf(0) }
-
     val backgroundColor = if (isDarkTheme) DarkBackground else LightBackground
-    //val backgroundColor = LightBackground
-
-    LaunchedEffect(allMedia) {
-        isFirstInstall.value = viewModel.isFirstInstall(context)
-        delay(250)
-        isLoading.value = false
-        if (isFirstInstall.value) {
-            delay(2000)
-            viewModel.markFirstInstall(context)
-        }
-        onLoadComplete()
-
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(500)
-            textIndex.intValue = (textIndex.intValue + 1) % loadingText.size
+    val isScanCompleted by viewModel.isInitialScanComplete.collectAsState()
+    val hasAlreadyCompleted = remember { viewModel.hasInitialScanCompleted(context) }
+    val progress by viewModel.initialScanProgress.collectAsState()
+    val processedItems by viewModel.initialScanProcessedItems.collectAsState()
+    val totalItems by viewModel.initialScanTotalItems.collectAsState()
+    LaunchedEffect(key1 = Unit) {
+        if (hasAlreadyCompleted) {
+            delay(1500)
+            onLoadComplete()
+        } else {
+            viewModel.performInitialScan(context)
         }
     }
-
+    LaunchedEffect(isScanCompleted) {
+        if (isScanCompleted) {
+            onLoadComplete()
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -89,40 +78,46 @@ fun SplashScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                painter = if (isDarkTheme) painterResource(R.drawable.ss_d) else painterResource(R.drawable.ss_l),
-                //painter = painterResource(R.drawable.ss_l),
+                painter = if (isDarkTheme) painterResource(R.drawable.albumaid) else painterResource(R.drawable.albumail),
                 contentDescription = "App Logo",
-                modifier = Modifier.size(90.dp),
+                modifier = Modifier.size(96.dp),
                 tint = Color.Unspecified,
             )
-
-            if (isFirstInstall.value) {
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            if (!hasAlreadyCompleted) {
                 Text(
-                    text = loadingText[textIndex.intValue],
-                    color = TextGray,
+                    text = "Menyiapkan Galeri...",
+                    color = if (isDarkTheme) TextWhite else TextBlack,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "$progress%",
+                    color = if (isDarkTheme) GoldAccent else BlueAccent,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Light,
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 LinearProgressIndicator(
-                    modifier = Modifier.width(150.dp),
-                    color = GoldAccent,
-                    trackColor = BlueAccent,
-                    strokeCap = StrokeCap.Butt,
-                )
-                Spacer(modifier = Modifier.padding(bottom = 100.dp))
-            } else {
-                Spacer(modifier = Modifier.height(16.dp))
-                CircularProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier.width(200.dp),
                     color = if (isDarkTheme) GoldAccent else BlueAccent,
-                    //color = GoldAccent,
-                    trackColor = if (isDarkTheme) SurfaceLight else SurfaceDark,
-                    //trackColor = BlueAccent,
-                    strokeCap = StrokeCap.Butt
+                    trackColor = if (isDarkTheme) SurfaceDark else SurfaceLight,
+                    strokeCap = StrokeCap.Round,
                 )
-                Spacer(modifier = Modifier.padding(bottom = 80.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Memindai $processedItems dari $totalItems media",
+                    color = TextGray,
+                    fontSize = 14.sp,
+                )
+            } else {
+                CircularProgressIndicator(
+                    color = if (isDarkTheme) GoldAccent else BlueAccent
+                )
             }
+            Spacer(modifier = Modifier.padding(bottom = 100.dp))
         }
     }
 }

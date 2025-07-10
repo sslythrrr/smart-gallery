@@ -71,14 +71,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import java.io.File
+import com.sslythrrr.galeri.ui.media.MediaItem
+import com.sslythrrr.galeri.viewmodel.MediaViewModel
 
 @Suppress("DEPRECATION")
 @Composable
@@ -172,16 +168,16 @@ fun ChatContent(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    "Tanyakan sesuatu atau cari media Anda",
+                    "Mulai interaksi",
                     color = if (isDarkTheme) TextLightGray else TextGrayDark,
-                    fontSize = 16.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Ketik untuk memulai pencarian atau bertanya ke AI",
+                    "Ketik untuk memulai pencarian",
                     color = if (isDarkTheme) TextGray else TextGrayDark,
-                    fontSize = 14.sp
+                    fontSize = 15.sp
                 )
             }
         } else {
@@ -214,19 +210,17 @@ fun ChatContent(
 private fun ChatBubble(
     message: ChatMessage,
     isDarkTheme: Boolean,
-    onImageClick: (String) -> Unit = {}, // Tambah parameter ini
-    onShowAllImages: () -> Unit = {} // Tambah parameter ini
+    onImageClick: (String) -> Unit = {},
+    onShowAllImages: () -> Unit = {}
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(), // Hapus widthIn untuk bot message
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
     ) {
         Column(
             horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start,
-            modifier = Modifier.fillMaxWidth() // Tambah ini untuk bot message full width
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // Text bubble
-            // Bubble container
             Box(
                 modifier = Modifier
                     .let {
@@ -249,38 +243,37 @@ private fun ChatBubble(
                     .padding(12.dp)
             ) {
                 Column {
-                    // Teks
                     Text(
                         text = message.text,
                         color = if (message.isUser) Color.White else if (isDarkTheme) TextWhite else TextBlack,
                         fontSize = 14.sp
                     )
 
-                    // Gambar
                     if (!message.isUser && message.images.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
+
+                        // Kita butuh akses ke MediaViewModel untuk menggunakan fungsi konverter .toMedia()
+                        val mediaViewModel: MediaViewModel = viewModel()
+
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(message.images) { imagePath ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(120.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onImageClick(imagePath) }
-                                ) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(File(imagePath)),
-                                        contentDescription = "Found image",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
+                            // Loop List<ScannedImage>
+                            items(message.images, key = { it.uri }) { scannedImage ->
+                                // 1. Ubah ScannedImage menjadi objek Media yang lengkap
+                                val media = mediaViewModel.run { scannedImage.toMedia() }
+
+                                // 2. Gunakan komponen MediaItem yang sudah terbukti bekerja
+                                MediaItem(
+                                    media = media,
+                                    onClick = { onImageClick(media.uri.toString()) },
+                                    isDarkTheme = isDarkTheme,
+                                    modifier = Modifier.size(120.dp) // Sesuaikan ukuran di sini
+                                )
                             }
                         }
 
-                        // Tombol "Lihat Semua"
                         if (message.showAllImagesButton) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(
@@ -294,8 +287,6 @@ private fun ChatBubble(
                 }
             }
 
-
-            // Timestamp
             Text(
                 text = formatTimestamp(message.timestamp),
                 color = if (isDarkTheme) TextGray else TextGrayDark,
@@ -402,7 +393,7 @@ private fun BottomBar(
                     onValueChange = onQueryChange,
                     placeholder = {
                         Text(
-                            "Tanyakan sesuatu...",
+                            "Ketik disini...",
                             color = if (isDarkTheme) TextGray else TextGrayDark,
                             fontSize = 14.sp
                         )

@@ -1,5 +1,6 @@
 package com.sslythrrr.galeri.navigation
 //v
+import android.content.Intent
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
@@ -15,15 +16,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.sslythrrr.galeri.ui.media.Media
+import com.sslythrrr.galeri.ui.screens.AiAlbumDetailScreen
 import com.sslythrrr.galeri.ui.screens.AlbumDetailScreen
 import com.sslythrrr.galeri.ui.screens.ChatbotResults
 import com.sslythrrr.galeri.ui.screens.MainScreen
 import com.sslythrrr.galeri.ui.screens.MediaDetailScreen
 import com.sslythrrr.galeri.ui.screens.SplashScreen
-import com.sslythrrr.galeri.ui.screens.mainscreen.SemuaMedia
 import com.sslythrrr.galeri.ui.screens.management.FavoriteMediaScreen
 import com.sslythrrr.galeri.ui.screens.management.LargeSizeMediaScreen
+import com.sslythrrr.galeri.ui.screens.management.TrashScreen
 import com.sslythrrr.galeri.ui.screens.management.VideoFilesScreen
 import com.sslythrrr.galeri.ui.screens.settings.AboutScreen
 import com.sslythrrr.galeri.ui.screens.settings.ContactScreen
@@ -32,7 +35,12 @@ import com.sslythrrr.galeri.viewmodel.ChatbotViewModel
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import com.sslythrrr.galeri.viewmodel.ThemeViewModel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import androidx.navigation.NavType // <-- TAMBAHKAN IMPORT INI
+import com.sslythrrr.galeri.ui.media.Album
+import com.sslythrrr.galeri.ui.media.MediaType
+import com.sslythrrr.galeri.ui.screens.management.CollectionsScreen
+import com.sslythrrr.galeri.ui.screens.management.DuplicateMediaScreen
+import com.sslythrrr.galeri.ui.screens.management.SearchHistoryScreen
 
 @Composable
 fun Navigation(
@@ -50,7 +58,6 @@ fun Navigation(
 
     LaunchedEffect(viewModel) {
         allMediaState.value = viewModel.fetchMedia(context)
-        viewModel.initializeFavoriteRepository(context)
     }
 
     LaunchedEffect(navController) {
@@ -82,20 +89,11 @@ fun Navigation(
             var isMainScreenLoading by remember { mutableStateOf(false) }
             MainScreen(
                 context = context,
-                onMediaClick = { media ->
-                    if (!navigationState.value) {
-                        navigationState.value = true
-                        navController.navigate("mediaDetail/${media.id}")
-                        coroutineScope.launch {
-                            navigationState.value = false
-                        }
-                    }
-                },
                 onAlbumClick = { album ->
                     if (!navigationState.value) {
                         navigationState.value = true
                         viewModel.setCurrentAlbum(album, context)
-                        navController.navigate("albumDetail")
+                        navController.navigate("albumDetail/${album.name}")
                         coroutineScope.launch {
                             navigationState.value = false
                         }
@@ -107,6 +105,9 @@ fun Navigation(
                 navController = navController,
                 onNavigationStateChange = { isLoading ->
                     isMainScreenLoading = isLoading
+                },
+                onTrashClick = {
+                    navController.navigate("trash")
                 },
                 onImageClick = { path ->
                     coroutineScope.launch {
@@ -137,20 +138,6 @@ fun Navigation(
                 },
             )
         }
-        composable(
-            "allMedia",
-            enterTransition = { slideInHorizontally { it } },
-            exitTransition = { slideOutHorizontally { it } }
-        ) {
-            SemuaMedia(
-                onBack = { navController.popBackStack() },
-                onMediaClick = { media ->
-                    navController.navigate("mediaDetail/${media.id}")
-                },
-                viewModel = viewModel,
-                isDarkTheme = isDarkTheme
-            )
-        }
         composable("filteredImages") {
             ChatbotResults(
                 onBack = { navController.popBackStack() },
@@ -174,10 +161,40 @@ fun Navigation(
             )
         }
         composable(
-            "albumDetail",
+            route = "albumDetail/{albumName}?isCollection={isCollection}",
+            arguments = listOf(
+                navArgument("albumName") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("isCollection") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            ),
             enterTransition = { slideInHorizontally { it } },
             exitTransition = { slideOutHorizontally { it } }
-        ) {
+        ) { backStackEntry ->
+            val albumName = backStackEntry.arguments?.getString("albumName")
+            val isCollection = backStackEntry.arguments?.getBoolean("isCollection") == true
+            LaunchedEffect(albumName, isCollection) {
+                if (isCollection) {
+                    albumName?.let { name ->
+                        val collectionAsAlbum = Album(
+                            id = name.hashCode().toLong(),
+                            name = name,
+                            uri = android.net.Uri.EMPTY,
+                            mediaCount = 0,
+                            latestMediaDate = 0
+                        )
+                        viewModel.setCurrentAlbum(collectionAsAlbum, context, shouldLoadMedia = false)
+                        viewModel.loadMediaForCollection(context, name)
+                    }
+                } else {
+                    val albumToShow = viewModel.albums.value.find { it.name == albumName }
+                    viewModel.setCurrentAlbum(albumToShow, context)
+                }
+            }
             AlbumDetailScreen(
                 album = currentAlbum,
                 onBack = { navController.popBackStack() },
@@ -185,8 +202,34 @@ fun Navigation(
                     navController.navigate("mediaDetail/${media.id}")
                 },
                 viewModel = viewModel,
+                isDarkTheme = isDarkTheme,
+                isCollection = isCollection
+            )
+        }
+        composable(
+            "searchHistory", // Rute baru kita
+            enterTransition = { slideInHorizontally { it } },
+            exitTransition = { slideOutHorizontally { it } }
+        ) {
+            SearchHistoryScreen(
+                onBackPressed = { navController.popBackStack() },
+                onHistoryClick = { query ->
+                    // Saat item riwayat di-klik, kita kembali ke halaman chatbot
+                    // dan langsung jalankan pencarian dengan query itu!
+                    chatbotViewModel.sendMessage(query)
+                    navController.navigate("main") {
+                        // Ini untuk pindah ke tab chatbot (index ke-0)
+                        // Kamu mungkin perlu menyesuaikan cara berpindah tab-nya
+                        // tergantung implementasi pager-mu.
+                        // Untuk saat ini, kita anggap kembali ke 'main' saja.
+                        popUpTo("main") { inclusive = true }
+                    }
+                },
                 isDarkTheme = isDarkTheme
             )
+        }
+        composable("collections") {
+            CollectionsScreen(navController = navController, viewModel = viewModel)
         }
         composable(
             "videoFiles",
@@ -221,21 +264,43 @@ fun Navigation(
 
         composable("mediaDetail/{mediaId}") { backStackEntry ->
             val mediaId = backStackEntry.arguments?.getString("mediaId")?.toLongOrNull()
-            val contextualMediaList = if (currentAlbum != null) {
-                remember(currentAlbum) {
-                    runBlocking { viewModel.fetchMediaAlbum(context, currentAlbum!!.id) }
-                }
+            if (mediaId != null) {
+                MediaDetailScreen(
+                    initialMediaId = mediaId,
+                    onBack = { navController.popBackStack() },
+                    onShare = { media ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = if (media.type == MediaType.IMAGE) "image/*" else "video/*"
+                            putExtra(Intent.EXTRA_STREAM, media.uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Bagikan ${media.title}"))
+                    },
+                    isDarkTheme = isDarkTheme,
+                    viewModel = viewModel
+                )
             } else {
-                allMediaState.value
+                // Kembali jika mediaId tidak valid
+                LaunchedEffect(Unit) {
+                    navController.popBackStack()
+                }
             }
-            val currentIndex =
-                contextualMediaList.indexOfFirst { it.id == mediaId }.takeIf { it >= 0 } ?: 0
-            MediaDetailScreen(
-                isDarkTheme = isDarkTheme,
-                mediaList = contextualMediaList,
-                initialMediaPosition = currentIndex,
+        }
+        composable(
+            "aiAlbumDetail/{albumName}",
+            arguments = listOf(navArgument("albumName") { type = NavType.StringType }),
+            enterTransition = { slideInHorizontally { it } },
+            exitTransition = { slideOutHorizontally { it } }
+        ) { backStackEntry ->
+            val albumName = backStackEntry.arguments?.getString("albumName") ?: ""
+            AiAlbumDetailScreen(
+                albumName = albumName,
+                viewModel = viewModel,
                 onBack = { navController.popBackStack() },
-                viewModel = viewModel
+                onMediaClick = { media ->
+                    navController.navigate("mediaDetail/${media.id}")
+                },
+                isDarkTheme = isDarkTheme
             )
         }
 
@@ -251,6 +316,29 @@ fun Navigation(
                     navController.navigate("mediaDetail/${media.id}")
                 },
                 viewModel = viewModel,
+                isDarkTheme = isDarkTheme
+            )
+        }
+
+        composable(
+            "duplicateMedia", // Nama rute baru kita
+            enterTransition = { slideInHorizontally { it } },
+            exitTransition = { slideOutHorizontally { it } }
+        ) {
+            DuplicateMediaScreen( // Panggil Composable yang sudah kamu siapkan
+                context = context,
+                onBack = { navController.popBackStack() },
+                onMediaClick = { media ->
+                    navController.navigate("mediaDetail/${media.id}")
+                },
+                viewModel = viewModel,
+                isDarkTheme = isDarkTheme
+            )
+        }
+        composable("trash") {
+            TrashScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
                 isDarkTheme = isDarkTheme
             )
         }

@@ -21,31 +21,30 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,11 +58,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.paging.filter
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.sslythrrr.galeri.ui.media.Media
@@ -81,57 +82,89 @@ import com.sslythrrr.galeri.ui.theme.TextGray
 import com.sslythrrr.galeri.ui.theme.TextGrayDark
 import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
+import com.sslythrrr.galeri.viewmodel.UiModel
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaDetailScreen(
-    mediaList: List<Media>,
-    initialMediaPosition: Int,
+    initialMediaId: Long, // BARU: Menerima ID media awal
     onBack: () -> Unit,
     onShare: (Media) -> Unit = {},
-    onEdit: (Media) -> Unit = {},
     isDarkTheme: Boolean,
     albumId: String? = null,
-    onDelete: (Media) -> Unit = {},
     viewModel: MediaViewModel
 ) {
-    val filteredMediaList = remember(mediaList, albumId) {
-        if (albumId != null) {
-            mediaList.filter { it.albumId?.toString() == albumId }
-        } else {
-            mediaList.sortedByDescending { it.dateTaken }
+    val originalPagerFlow = viewModel.mediaPager.collectAsState().value
+
+    // Buat flow baru yang HANYA berisi MediaItem, membuang SeparatorItem
+    val mediaOnlyPagerFlow = remember(originalPagerFlow) {
+        originalPagerFlow?.map { pagingData ->
+            pagingData.filter { it is UiModel.MediaItem }
         }
     }
 
-    val currentMediaIndex = remember(mediaList, initialMediaPosition, albumId) {
-        if (albumId != null) {
-            val mediaToFind = mediaList.getOrNull(initialMediaPosition)
-            filteredMediaList.indexOfFirst { it.id == mediaToFind?.id }.takeIf { it >= 0 } ?: 0
-        } else {
-            initialMediaPosition.coerceIn(0, filteredMediaList.size - 1)
+    val lazyPagingItems = mediaOnlyPagerFlow?.collectAsLazyPagingItems()
+
+    var initialPage by remember { mutableIntStateOf(0) }
+    var isInitialPageFound by remember { mutableStateOf(false) }
+
+    // Efek untuk mencari halaman awal setelah item dimuat
+    LaunchedEffect(lazyPagingItems?.itemCount) {
+        if (lazyPagingItems != null && !isInitialPageFound) {
+            val itemCount = lazyPagingItems.itemCount
+            for (i in 0 until itemCount) {
+                val item = lazyPagingItems.peek(i)
+                if (item is UiModel.MediaItem && item.media.id == initialMediaId) {
+                    initialPage = i
+                    isInitialPageFound = true
+                    break
+                }
+            }
         }
     }
 
-    val pagerState = rememberPagerState(initialPage = currentMediaIndex) { filteredMediaList.size }
+    // Tampilkan loading jika Pager belum siap atau halaman awal belum ketemu
+    if (lazyPagingItems == null || !isInitialPageFound && lazyPagingItems.itemCount > 0) {
+        Box(modifier = Modifier.fillMaxSize().background(if(isDarkTheme) DarkBackground else LightBackground), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = if(isDarkTheme) GoldAccent else BlueAccent)
+        }
+        return
+    }
+
+    val pagerState = rememberPagerState(initialPage = initialPage) {
+        lazyPagingItems.itemCount
+    }
+
     val currentMedia by remember(pagerState.currentPage) {
-        derivedStateOf { filteredMediaList.getOrNull(pagerState.currentPage) }
+        derivedStateOf {
+            if (lazyPagingItems.itemCount > 0) {
+                (lazyPagingItems[pagerState.currentPage] as? UiModel.MediaItem)?.media
+            } else {
+                null
+            }
+        }
     }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     var isResumed by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var isZoomed by remember { mutableStateOf(false) }
     val isVideo = currentMedia?.type == MediaType.VIDEO
     var isVideoPlaying by remember { mutableStateOf(false) }
     var showVideoControls by remember { mutableStateOf(false) }
-
     val shouldShowControls = when {
         isVideo -> !isVideoPlaying // Show custom controls hanya kalau video tidak playing
         else -> showControls // Image tetap pakai logic lama
     }
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.navigateBackSignal.collect {
+            onBack()
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -143,40 +176,6 @@ fun MediaDetailScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    if (showDeleteConfirmation && currentMedia != null) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Hapus", color = if (isDarkTheme) TextWhite else TextBlack) },
-            text = {
-                Text(
-                    "Anda yakin ingin menghapus media ini?",
-                    color = if (isDarkTheme) TextWhite else TextBlack
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        currentMedia?.let { media ->
-                            // Soft delete instead of permanent delete
-                            onDelete(media) // parameter baru yang perlu ditambah
-                        }
-                        showDeleteConfirmation = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                ) {
-                    Text("Pindah ke Sampah")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text("Batal", color = if (isDarkTheme) TextGray else TextGrayDark)
-                }
-            },
-            containerColor = if (isDarkTheme) SurfaceDark else SurfaceLight,
-            tonalElevation = 8.dp
-        )
     }
 
     if (showInfoDialog) {
@@ -197,35 +196,32 @@ fun MediaDetailScreen(
             ) {
             }
     ) {
-        if (filteredMediaList.isEmpty()) {
-            Text(
-                "No media found",
-                modifier = Modifier.align(Alignment.Center),
-                color = if (isDarkTheme) TextWhite else TextBlack
-            )
-        } else {
-            HorizontalPager(
-                userScrollEnabled = true,
-                state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                val media = filteredMediaList.getOrNull(page)
+        HorizontalPager(
+            state = pagerState,
+            key = lazyPagingItems.itemKey { (it as UiModel.MediaItem).media.id },
+            modifier = Modifier.fillMaxSize()
+        ) { pageIndex ->
+            val uiModel = lazyPagingItems[pageIndex]
+            if (uiModel is UiModel.MediaItem) {
                 MediaAction(
-                    media = media,
-                    isResumed = isResumed && page == pagerState.currentPage,
+                    media = uiModel.media,
+                    isResumed = isResumed && pageIndex == pagerState.currentPage,
                     onSingleTap = {
-                        if (!isVideo) {
+                        if (uiModel.media.type != MediaType.VIDEO) {
                             showControls = !showControls
                         } else {
-                            // Untuk video, single tap toggle custom controls saat pause
                             if (!isVideoPlaying) {
                                 showControls = !showControls
                             }
                         }
                     },
-                    isPagerCurrentPage = page == pagerState.currentPage,
+                    // Anda mungkin perlu menyesuaikan parameter MediaAction ini
+                    // karena filteredMediaList sudah tidak ada.
+                    // Untuk isPagerCurrentPage, pagerState, dll. bisa disesuaikan atau dihapus
+                    // jika tidak lagi relevan dengan PagingData
+                    isPagerCurrentPage = pageIndex == pagerState.currentPage,
                     pagerState = pagerState,
-                    filteredMediaList = filteredMediaList,
+                    filteredMediaList = emptyList(), // Hapus dependensi ini
                     isVideoPlaying = isVideoPlaying,
                     onVideoPlayStateChanged = { playing ->
                         isVideoPlaying = playing
@@ -286,25 +282,13 @@ fun MediaDetailScreen(
                     currentMedia?.let { media ->
                         IconButton(
                             onClick = {
-                                viewModel.toggleFavorite(media.id)
+                                viewModel.toggleFavorite(media, context)
                             }
                         ) {
                             Icon(
-                                imageVector = if (viewModel.isFavorite(media.id)) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                imageVector = if (media.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Favorite",
-                                tint = if (viewModel.isFavorite(media.id)) Color.Red else (if (isDarkTheme) GoldAccent else BlueAccent)
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                // TODO: Implement toggle archive
-                                // viewModel.toggleArchive(media.path)
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (media.isArchive == true) Icons.Default.Unarchive else Icons.Default.Archive,
-                                contentDescription = "Archive",
-                                tint = if (isDarkTheme) GoldAccent else BlueAccent
+                                tint = if (media.isFavorite) Color.Red else (if (isDarkTheme) GoldAccent else BlueAccent)
                             )
                         }
                     }
@@ -351,20 +335,38 @@ fun MediaDetailScreen(
                                 tint = if (isDarkTheme) SurfaceLight else SurfaceDark
                             )
                         }
-
-                        IconButton(onClick = { onEdit(media) }) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "Edit",
-                                tint = if (isDarkTheme) SurfaceLight else SurfaceDark
-                            )
-                        }
-
+                        var showDeleteConfirmation by remember { mutableStateOf(false) }
                         IconButton(onClick = { showDeleteConfirmation = true }) {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete",
-                                tint = if (isDarkTheme) SurfaceLight else SurfaceDark
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Media",
+                                tint = if (isDarkTheme) Color.White else Color.Black
+                            )
+                        }
+                        if (showDeleteConfirmation) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteConfirmation = false },
+                                title = { Text("Pindahkan ke Sampah?") },
+                                text = { Text("Item ini akan dihapus permanen setelah 7 hari. Anda dapat memulihkannya dari sampah.") },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            viewModel.moveMediaToTrash(listOf(media), context) {
+                                                onBack()
+                                            }
+                                            showDeleteConfirmation = false
+                                            viewModel.clearSelection()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                    ) {
+                                        Text("Ya, Pindahkan")
+                                    }
+                                },
+                                dismissButton = {
+                                    Button(onClick = { showDeleteConfirmation = false }) {
+                                        Text("Batal")
+                                    }
+                                }
                             )
                         }
 
@@ -389,23 +391,19 @@ fun Image(
     onSingleTap: () -> Unit,
     isPagerCurrentPage: Boolean,
     pagerState: PagerState,
-    filteredMediaList: List<Media>
+    filteredMediaList: List<Media> // Kita akan sesuaikan pemanggilannya
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var totalDragAmount by remember { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
 
-    /* LaunchedEffect(scale) {
-         onZoomChange(scale > 1f)
-     }*/
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTransformGestures { centroid, pan, gestureZoom, _ ->
-                    scale = (scale * gestureZoom).coerceIn(1f, 5f)
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
                     if (scale > 1f) {
                         val newOffset = offset + pan
                         val maxX = (scale - 1) * size.width / 2
@@ -414,6 +412,8 @@ fun Image(
                             x = newOffset.x.coerceIn(-maxX, maxX),
                             y = newOffset.y.coerceIn(-maxY, maxY)
                         )
+                    } else {
+                        offset = Offset.Zero
                     }
                 }
             }
@@ -421,12 +421,14 @@ fun Image(
                 detectHorizontalDragGestures(
                     onDragStart = { totalDragAmount = 0f },
                     onDragEnd = {
+                        // Logika swipe manual Anda yang sudah benar
                         if (scale <= 1f && isPagerCurrentPage) {
+                            val itemCount = pagerState.pageCount
                             if (totalDragAmount > 100 && pagerState.currentPage > 0) {
                                 scope.launch {
                                     pagerState.animateScrollToPage(pagerState.currentPage - 1)
                                 }
-                            } else if (totalDragAmount < -100 && pagerState.currentPage < filteredMediaList.size - 1) {
+                            } else if (totalDragAmount < -100 && pagerState.currentPage < itemCount - 1) {
                                 scope.launch {
                                     pagerState.animateScrollToPage(pagerState.currentPage + 1)
                                 }
@@ -434,15 +436,15 @@ fun Image(
                         }
                     },
                     onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
+                        // === INI KUNCI PERBAIKANNYA ===
                         if (scale > 1f) {
+                            // Jika di-zoom, konsumsi gestur untuk pan
+                            change.consume()
                             val newOffsetX = offset.x + dragAmount
                             val maxX = (scale - 1) * size.width / 2
-                            offset = Offset(
-                                x = newOffsetX.coerceIn(-maxX, maxX),
-                                y = offset.y
-                            )
+                            offset = Offset(x = newOffsetX.coerceIn(-maxX, maxX), y = offset.y)
                         } else {
+                            // Jika tidak di-zoom, biarkan gestur untuk swipe manual
                             totalDragAmount += dragAmount
                         }
                     }
@@ -450,8 +452,8 @@ fun Image(
             }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = { tapOffset ->
-                        scale = if (scale == 1f) 3f else 1f
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 3f
                         offset = Offset.Zero
                     },
                     onTap = { onSingleTap() }
@@ -459,10 +461,7 @@ fun Image(
             }
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(uri)
-                .crossfade(true)
-                .build(),
+            model = ImageRequest.Builder(LocalContext.current).data(uri).crossfade(true).build(),
             contentDescription = contentDescription,
             contentScale = ContentScale.Fit,
             modifier = Modifier

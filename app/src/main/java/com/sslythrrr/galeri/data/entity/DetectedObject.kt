@@ -6,7 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "detected_objects",
+    tableName = "deteksi_label",
     foreignKeys = [ForeignKey(
         entity = ScannedImage::class,
         parentColumns = ["uri"],

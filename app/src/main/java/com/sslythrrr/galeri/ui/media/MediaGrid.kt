@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.paging.compose.LazyPagingItems
 import com.sslythrrr.galeri.ui.components.SectionHeader
 import com.sslythrrr.galeri.ui.theme.DarkBackground
 import com.sslythrrr.galeri.ui.theme.LightBackground
@@ -18,11 +19,13 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.paging.compose.collectAsLazyPagingItems
+import com.sslythrrr.galeri.viewmodel.UiModel
 
 @Composable
 fun MediaGrid(
     modifier: Modifier = Modifier,
-    sections: List<SectionItem>,
+    lazyPagingItems: LazyPagingItems<UiModel>, // DIUBAH: Menerima LazyPagingItems<UiModel>
     onMediaClick: (Media) -> Unit,
     isDarkTheme: Boolean,
     selectedMedia: Set<Media> = emptySet(),
@@ -32,39 +35,49 @@ fun MediaGrid(
 
     LazyVerticalGrid(
         state = lazyGridState,
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(3), // Kamu bisa sesuaikan jumlah kolom di sini
         contentPadding = PaddingValues(1.dp),
         modifier = modifier.background(if (isDarkTheme) DarkBackground else LightBackground)
     ) {
+        // Logika baru untuk menampilkan item dari PagingData
         items(
-            items = sections,
-            key = { item ->
+            count = lazyPagingItems.itemCount,
+            key = { index ->
+                val item = lazyPagingItems.peek(index)
                 when (item) {
-                    is SectionItem.Header -> "header_${item.title}"
-                    is SectionItem.MediaItem -> "media_${item.media.id}"
+                    is UiModel.MediaItem -> "media_${item.media.id}"
+                    is UiModel.SeparatorItem -> "separator_${item.date}"
+                    null -> "placeholder_$index"
                 }
             },
-            span = { item ->
-                when (item) {
-                    is SectionItem.Header -> GridItemSpan(currentLineSpan = 4)
-                    is SectionItem.MediaItem -> GridItemSpan(1)
+            span = { index ->
+                val item = lazyPagingItems.peek(index)
+                if (item is UiModel.SeparatorItem) {
+                    GridItemSpan(maxLineSpan) // Header memakan satu baris penuh
+                } else {
+                    GridItemSpan(1) // Item media hanya 1 kolom
                 }
             }
-        ) { item ->
-            when (item) {
-                is SectionItem.Header -> {
-                    SectionHeader(title = item.title, isDarkTheme = isDarkTheme)
-                }
-
-                is SectionItem.MediaItem -> {
-                    MediaItem(
-                        media = item.media,
-                        onClick = onMediaClick,
-                        modifier = Modifier.padding(1.dp),
-                        isDarkTheme = isDarkTheme,
-                        isSelected = selectedMedia.contains(item.media),
-                        onLongClick = onLongClick
-                    )
+        ) { index ->
+            val item = lazyPagingItems[index]
+            item?.let {
+                when (it) {
+                    is UiModel.MediaItem -> {
+                        MediaItem(
+                            media = it.media,
+                            onClick = onMediaClick,
+                            modifier = Modifier.padding(1.dp),
+                            isDarkTheme = isDarkTheme,
+                            isSelected = selectedMedia.contains(it.media),
+                            onLongClick = onLongClick
+                        )
+                    }
+                    is UiModel.SeparatorItem -> {
+                        SectionHeader(
+                            title = it.date,
+                            isDarkTheme = isDarkTheme
+                        )
+                    }
                 }
             }
         }

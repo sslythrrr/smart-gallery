@@ -1,5 +1,5 @@
 package com.sslythrrr.galeri.ui.screens.management
-///b
+
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -9,17 +9,12 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,10 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,8 +38,6 @@ import androidx.compose.ui.unit.sp
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.sslythrrr.galeri.ui.media.Media
 import com.sslythrrr.galeri.ui.media.MediaGrid
-import com.sslythrrr.galeri.ui.media.MediaType
-import com.sslythrrr.galeri.ui.media.dateSection
 import com.sslythrrr.galeri.ui.screens.SelectionTopBar
 import com.sslythrrr.galeri.ui.theme.BlueAccent
 import com.sslythrrr.galeri.ui.theme.DarkBackground
@@ -57,12 +46,8 @@ import com.sslythrrr.galeri.ui.theme.LightBackground
 import com.sslythrrr.galeri.ui.theme.SurfaceDark
 import com.sslythrrr.galeri.ui.theme.SurfaceLight
 import com.sslythrrr.galeri.ui.theme.TextBlack
-import com.sslythrrr.galeri.ui.theme.TextGrayDark
-import com.sslythrrr.galeri.ui.theme.TextLightGray
 import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,36 +57,18 @@ fun VideoFilesScreen(
     viewModel: MediaViewModel,
     isDarkTheme: Boolean
 ) {
-    var isLoading by remember { mutableStateOf(true) }
-    val mediaPager by viewModel.mediaPager.collectAsState()
-    val lazyPagingItems = mediaPager?.flow?.collectAsLazyPagingItems()
+    val context = LocalContext.current
+    val pagerFlow by viewModel.mediaPager.collectAsState()
+    val lazyPagingItems = pagerFlow?.collectAsLazyPagingItems()
 
     LaunchedEffect(Unit) {
-        isLoading = true
-        delay(50)
-
-        lazyPagingItems?.let { pagingItems ->
-            snapshotFlow { pagingItems.itemSnapshotList.items }.collectLatest { items ->
-                val videoItems = items.filter { it.type == MediaType.VIDEO }
-                viewModel.setPagedMedia(videoItems)
-                if (videoItems.isNotEmpty()) {
-                    delay(200)
-                    isLoading = false
-                }
-            }
-        }
-
-
-        delay(200)
-        isLoading = false
+        viewModel.loadVideoOnly(context) // Panggil fungsi baru yang efisien
     }
-    val pagedMedia by viewModel.pagedMedia.collectAsState()
-    val sections = dateSection(pagedMedia)
-
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMedia by viewModel.selectedMedia.collectAsState()
-    val context = LocalContext.current
+
+
 
     val handleMediaLongClick: (Media) -> Unit = { media ->
         if (!isSelectionMode) {
@@ -150,74 +117,40 @@ fun VideoFilesScreen(
                         onClearSelection = { viewModel.clearSelection() },
                         onDelete = confirmDelete,
                         onShare = shareSelectedMedia,
-                        isDarkTheme = isDarkTheme
+                        isDarkTheme = isDarkTheme,
+                        onAddToCollection = {
+                            viewModel.loadCollections(context)
+                        }
                     )
                 } else {
                     TopAppBar(
                         modifier = Modifier.height(48.dp),
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = if (isDarkTheme) SurfaceDark else SurfaceLight
-                        ),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isDarkTheme) SurfaceDark else SurfaceLight),
                         windowInsets = WindowInsets(0),
-                        title = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Text(
-                                    "Berkas Video",
-                                    color = if (isDarkTheme) TextWhite else TextBlack,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        },
+                        title = { Text("Berkas Video", color = if(isDarkTheme) TextWhite else TextBlack, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    "Back",
-                                    tint = if (isDarkTheme) GoldAccent else BlueAccent
-                                )
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = if (isDarkTheme) GoldAccent else BlueAccent)
                             }
-                        })
-                }
-            }
-        }) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (isDarkTheme) DarkBackground else LightBackground),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = if (isDarkTheme) GoldAccent else BlueAccent,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Memuat video...",
-                        color = if (isDarkTheme) TextLightGray else TextGrayDark,
-                        fontSize = 16.sp
+                        }
                     )
                 }
             }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .background(if (isDarkTheme) DarkBackground else LightBackground)
-            ) {
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(if (isDarkTheme) DarkBackground else LightBackground)
+        ) {
+            if (lazyPagingItems == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = if (isDarkTheme) GoldAccent else BlueAccent)
+                }
+            } else {
                 MediaGrid(
-                    sections = sections,
+                    lazyPagingItems = lazyPagingItems,
                     onMediaClick = handleMediaClick,
                     isDarkTheme = isDarkTheme,
                     selectedMedia = selectedMedia,

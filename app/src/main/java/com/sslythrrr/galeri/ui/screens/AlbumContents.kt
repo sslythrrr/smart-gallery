@@ -22,12 +22,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -40,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,43 +70,30 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import androidx.paging.compose.collectAsLazyPagingItems
+import com.sslythrrr.galeri.ui.components.AddToCollectionDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumDetailScreen(
     album: Album?,
+    isCollection: Boolean,
     onBack: () -> Unit,
     onMediaClick: (Media) -> Unit,
     viewModel: MediaViewModel,
     isDarkTheme: Boolean
 ) {
-    val mediaPager by viewModel.mediaPager.collectAsState()
-    val lazyPagingItems = mediaPager?.flow?.collectAsLazyPagingItems()
-    var isLoading by remember { mutableStateOf(true) }
-    LaunchedEffect(album?.id) {
-        isLoading = true
-        delay(50)
-    }
+    // KITA HAPUS SEMUA LOGIKA LAMA YANG MENGGUNAKAN `pagedMedia` dan `sections`
 
-    LaunchedEffect(lazyPagingItems) {
-        lazyPagingItems?.let { pagingItems ->
-            snapshotFlow { pagingItems.itemSnapshotList.items }
-                .map { it.map { media -> media.id } } // hanya id
-                .distinctUntilChanged()
-                .collectLatest { ids ->
-                    viewModel.setPagedMedia(lazyPagingItems.itemSnapshotList.items)
-                    delay(200)
-                    isLoading = false
-                }
-        }
-    }
-    val pagedMedia by viewModel.pagedMedia.collectAsState()
-    val sections = dateSection(pagedMedia)
-
+    // BARU: Langsung kumpulkan data Pager dari ViewModel sebagai LazyPagingItems
+    val lazyPagingItems = viewModel.mediaPager.collectAsState().value?.collectAsLazyPagingItems()
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMedia by viewModel.selectedMedia.collectAsState()
     val context = LocalContext.current
+
+    var showCollectionDialog by remember { mutableStateOf(false) }
+    val collections by viewModel.collections.collectAsState()
 
     val handleMediaLongClick: (Media) -> Unit = { media ->
         if (!isSelectionMode) {
@@ -126,14 +119,77 @@ fun AlbumDetailScreen(
         }
         context.startActivity(Intent.createChooser(shareIntent, "Bagikan ke"))
     }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
-    val confirmDelete = {
-        // Implementasi dialog konfirmasi hapus media
-        // ...
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Pindahkan ke Sampah?") },
+            text = { Text("Item ini akan dihapus permanen setelah 7 hari. Anda dapat memulihkannya dari sampah.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.moveMediaToTrash(selectedMedia.toList(), context){
+                            viewModel.sendNavigateBackSignal()
+                        }
+                        showDeleteConfirmation = false
+                        viewModel.clearSelection()
+                        lazyPagingItems?.refresh()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Ya, Pindahkan")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteConfirmation = false }) {
+                    Text("Batal")
+                }
+            }
+        )
     }
-
+    var collectionToDelete by remember { mutableStateOf<String?>(null) }
+    if (collectionToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { collectionToDelete = null },
+            title = { Text("Hapus Koleksi") },
+            text = { Text("Yakin ingin menghapus koleksi '${collectionToDelete}'? Foto di dalamnya tidak akan ikut terhapus.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteCollection(context, collectionToDelete!!)
+                        collectionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { collectionToDelete = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
+    }
+    if (showCollectionDialog) {
+        AddToCollectionDialog(
+            collections = collections,
+            onDismiss = { showCollectionDialog = false },
+            onCollectionSelected = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            },
+            onNewCollection = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            }
+        )
     }
 
     Scaffold(
@@ -150,9 +206,22 @@ fun AlbumDetailScreen(
                         selectedCount = selectedMedia.size,
                         onSelectAll = { viewModel.selectMedia(context) },
                         onClearSelection = { viewModel.clearSelection() },
-                        onDelete = confirmDelete,
+                        onDelete = {
+                            if (isCollection) {
+                                album?.name?.let { collectionName ->
+                                    viewModel.removeMediaFromCollection(context, selectedMedia.toList(), collectionName)
+                                }
+                            } else {
+                                showDeleteConfirmation = true
+                            }
+                        },
                         onShare = shareSelectedMedia,
-                        isDarkTheme = isDarkTheme
+                        isDarkTheme = isDarkTheme,
+                        isSelectionInCollection = isCollection,
+                        onAddToCollection = {
+                            viewModel.loadCollections(context)
+                            showCollectionDialog = true
+                        }
                     )
                 } else {
                     TopAppBar(
@@ -190,46 +259,26 @@ fun AlbumDetailScreen(
             }
         }
     ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (isDarkTheme) DarkBackground else LightBackground),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = if (isDarkTheme) GoldAccent else BlueAccent,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Memuat media...",
-                        color = if (isDarkTheme) TextLightGray else TextGrayDark,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-        } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .background(if (isDarkTheme) DarkBackground else LightBackground)
             ) {
-                MediaGrid(
-                    sections = sections,
-                    onMediaClick = handleMediaClick,
-                    isDarkTheme = isDarkTheme,
-                    selectedMedia = selectedMedia,
-                    onLongClick = handleMediaLongClick,
-                    modifier = Modifier
-                        .fillMaxSize()
-                )
-            }
+                if (lazyPagingItems != null) {
+                    MediaGrid(
+                        lazyPagingItems = lazyPagingItems,
+                        onMediaClick = handleMediaClick,
+                        isDarkTheme = isDarkTheme,
+                        selectedMedia = selectedMedia,
+                        onLongClick = handleMediaLongClick,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
         }
     }
 }

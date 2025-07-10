@@ -1,210 +1,149 @@
 package com.sslythrrr.galeri.ml
-//Experimental
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.core.graphics.scale
 import com.sslythrrr.galeri.data.entity.DetectedObject
-import com.sslythrrr.galeri.data.utils.Labels
+import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
-
-import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
 class ObjectDetector(private val context: Context) {
-    private val tag = "ObjectDetector"
-    private val modelFilename = "yolo11_cls.tflite"
+    private val tag = "ObjectDetector_Final"
+    private val modelFilename = "mobilenetv3_multilabel.tflite"
+    private val vocabFilename = "vocab.json"
     private val inputSize = 224
-    private val confidenceThreshold = 0.5f
+    private val confidenceThreshold = 0.05f
 
     private lateinit var tflite: Interpreter
-    private lateinit var outputShapes: Array<IntArray>
     private var isInitialized = false
-    private var reusableByteBuffer: ByteBuffer? = null
-    private var reusableOutputClasses = Array(1) { FloatArray(1000) }
-
     private val lock = Any()
+
+    private lateinit var idxToTagMap: Map<Int, String>
+    private var vocabSize: Int = 0
+    private var reusableByteBuffer: ByteBuffer? = null
 
     fun initialize() {
         if (isInitialized) return
-
         try {
-            setupTFLiteInterpreter()
+            val modelBuffer = loadModelFileFromAssets(modelFilename)
+            val options = Interpreter.Options().apply {
+                setUseXNNPACK(false)
+                numThreads = 4 }
+            tflite = Interpreter(modelBuffer, options)
+            loadVocabulary(vocabFilename)
             isInitialized = true
-            Log.d(tag, "Object detector berhasil diinisialisasi")
+            Log.d(tag, "✅✅✅ Object Detector (UNTUK MODEL BARU) Berhasil Diinisialisasi ✅✅✅")
         } catch (e: Exception) {
-            Log.e(tag, "❌ Gagal menginisialisasi object detector", e)
-            throw e
+            Log.e(tag, "❌ Gagal total saat inisialisasi", e)
         }
     }
 
     fun detectObjects(path: String, uri: String): List<DetectedObject> {
         synchronized(lock) {
-            if (!isInitialized) {
-                Log.e(tag, "Object detector belum diinisialisasi!")
-                return emptyList()
-            }
-
+            if (!isInitialized) return emptyList()
             try {
                 val bitmap = loadAndResizeImage(path)
                 if (bitmap == null) {
-                    Log.e(tag, "❌ Gagal membuka gambar: $path")
+                    Log.e(tag, "❌ GAGAL MEMUAT BITMAP DARI PATH: $path.")
                     return emptyList()
                 }
 
+                // INI BAGIAN YANG DIPERBAIKI SESUAI ERROR LOG
                 val inputBuffer = convertBitmapToByteBuffer(bitmap)
-                val outputClasses = reusableOutputClasses
+                inputBuffer.rewind()
 
-                Log.d(tag, "Running inference pada gambar: $path")
-                tflite.run(inputBuffer, outputClasses)
+                // Model baru mengeluarkan output UINT8 juga
+                val outputBuffer = Array(1) { ByteArray(vocabSize) }
+                tflite.run(inputBuffer, outputBuffer)
 
-                return parseClassificationResults(
-                    classes = outputClasses[0],
-                    uri = uri
-                )
-
+                val results = parseQuantizedResults(outputBuffer[0], uri)
+                if (results.isNotEmpty()) {
+                    Log.i(tag, "🎯 Berhasil! ${results.size} objek terdeteksi di $uri: ${results.joinToString { it.label }}")
+                }
+                return results
             } catch (e: Exception) {
-                Log.e(tag, "❌ Error detecting objects", e)
-                e.printStackTrace()
+                Log.e(tag, "❌ Error tidak terduga saat deteksi objek di $path", e)
                 return emptyList()
             }
         }
     }
 
-    private fun setupTFLiteInterpreter() {
-        val modelFile = File(context.filesDir, modelFilename)
-        if (!modelFile.exists()) {
-            throw IllegalStateException("Model TFLite tidak ditemukan di: ${modelFile.absolutePath}")
+    private fun loadVocabulary(filename: String) {
+        try {
+            context.assets.open(filename).bufferedReader().use {
+                val jsonObject = JSONObject(it.readText())
+                val idxToTagJsonObject = jsonObject.getJSONObject("idx_to_tag")
+                idxToTagMap = idxToTagJsonObject.keys().asSequence().map { key ->
+                    key.toInt() to idxToTagJsonObject.getString(key)
+                }.toMap()
+                vocabSize = idxToTagMap.size
+            }
+        } catch (e: IOException) {
+            throw e
         }
-
-        val options = Interpreter.Options()
-        options.setNumThreads(2)
-
-
-        tflite = Interpreter(loadModelFile(modelFile), options)
-        outputShapes = Array(tflite.outputTensorCount) { i ->
-            tflite.getOutputTensor(i).shape()
-        }
-
-        Log.d(tag, "Model dimuat. Jumlah outputTensor: ${tflite.outputTensorCount}")
-        val inputTensor = tflite.getInputTensor(0)
-        val outputTensor = tflite.getOutputTensor(0)
-        Log.d(tag, "Input shape: ${inputTensor.shape().contentToString()}")
-        Log.d(tag, "Output shape: ${outputTensor.shape().contentToString()}")
-        Log.d(tag, "Input dataType: ${inputTensor.dataType()}")
-        Log.d(tag, "Expected input bytes: ${inputTensor.numBytes()}")
-        Log.d(tag, "Our buffer size: ${1 * inputSize * inputSize * 3 * 4}")
     }
 
-
-    private fun loadModelFile(modelFile: File): MappedByteBuffer {
-        val fileDescriptor = FileInputStream(modelFile).fd
-        val fileChannel = FileInputStream(fileDescriptor).channel
-        val startOffset = 0L
-        val declaredLength = fileChannel.size()
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+    private fun loadModelFileFromAssets(modelFilename: String): MappedByteBuffer {
+        context.assets.openFd(modelFilename).use { assetFileDescriptor ->
+            FileInputStream(assetFileDescriptor.fileDescriptor).use { inputStream ->
+                val fileChannel = inputStream.channel
+                return fileChannel.map(FileChannel.MapMode.READ_ONLY, assetFileDescriptor.startOffset, assetFileDescriptor.declaredLength)
+            }
+        }
     }
 
+    // --- PERBAIKAN FINAL BERDASARKAN CRASH LOG ---
+    // Mengubah buffer menjadi UINT8 (1 byte per channel)
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
         if (reusableByteBuffer == null) {
-            reusableByteBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
+            // Ukuran sekarang 1 * 224 * 224 * 3 * 1 (untuk byte) = 150528
+            reusableByteBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3)
             reusableByteBuffer!!.order(ByteOrder.nativeOrder())
         }
         val byteBuffer = reusableByteBuffer!!
         byteBuffer.clear()
 
         val pixels = IntArray(inputSize * inputSize)
-        bitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
-        for (pixel in pixels) {
-            val r = ((pixel shr 16) and 0xFF) / 255.0f
-            val g = ((pixel shr 8) and 0xFF) / 255.0f
-            val b = (pixel and 0xFF) / 255.0f
-
-            byteBuffer.putFloat(r)
-            byteBuffer.putFloat(g)
-            byteBuffer.putFloat(b)
+        for (pixelValue in pixels) {
+            // Langsung memasukkan nilai R, G, B sebagai byte [0, 255]
+            byteBuffer.put(((pixelValue shr 16) and 0xFF).toByte())
+            byteBuffer.put(((pixelValue shr 8) and 0xFF).toByte())
+            byteBuffer.put((pixelValue and 0xFF).toByte())
         }
-
-        byteBuffer.rewind()
         return byteBuffer
     }
 
-    private fun parseClassificationResults(
-        classes: FloatArray,
-        uri: String
-    ): List<DetectedObject> {
+    private fun parseQuantizedResults(output: ByteArray, uri: String): List<DetectedObject> {
         val results = mutableListOf<DetectedObject>()
-
-        // Ambil top 5 predictions
-        val classWithScores = classes.mapIndexed { index, score ->
-            Pair(index, score)
-        }.sortedByDescending { it.second }.take(5)
-
-        for ((classId, score) in classWithScores) {
-            if (score >= confidenceThreshold) {
-                val label = Labels.getLabel(classId)
-
-                Log.d(tag, "Klasifikasi: class=$classId, label=$label, score=$score")
-
-                if (label != "Tidak Diketahui") {
-                    results.add(
-                        DetectedObject(
-                            id = 0,
-                            uri = uri,
-                            label = label,
-                            confidence = score
-                        )
+        // Kita gunakan 'forEachIndexed' yang pasti ada di ByteArray
+        output.forEachIndexed { index, byteValue ->
+            // Ubah byte [-128, 127] menjadi probabilitas [0, 1]
+            val probability = (byteValue.toInt() and 0xFF) / 255.0f
+            if (probability >= confidenceThreshold) {
+                results.add(
+                    DetectedObject(
+                        uri = uri,
+                        label = idxToTagMap[index] ?: "Unknown",
+                        confidence = probability
                     )
-                }
+                )
             }
         }
-        return results
+        // Lakukan pengurutan setelah semua hasil terkumpul
+        return results.sortedByDescending { it.confidence }
     }
 
-    private fun loadAndResizeImage(path: String): Bitmap? {
-        return try {
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            BitmapFactory.decodeFile(path, options)
-
-            options.inSampleSize = calculateInSampleSize(options, inputSize, inputSize)
-            options.inJustDecodeBounds = false
-            options.inMutable = true // untuk reuse di GPU delegate, dll
-
-            val bitmap = BitmapFactory.decodeFile(path, options) ?: return null
-            bitmap.scale(inputSize, inputSize, false)
-        } catch (e: Exception) {
-            Log.e(tag, "❌ Gagal decode gambar: $path", e)
-            null
-            null
-        }
-    }
-
-
-    private fun calculateInSampleSize(
-        options: BitmapFactory.Options,
-        reqWidth: Int,
-        reqHeight: Int
-    ): Int {
-        val height = options.outHeight
-        val width = options.outWidth
-        var inSampleSize = 1
-
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight = height / 2
-            val halfWidth = width / 2
-
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
+    private fun loadAndResizeImage(path: String): Bitmap? = try {
+        BitmapFactory.decodeFile(path)?.scale(inputSize, inputSize, true)
+    } catch (e: Exception) { null }
 }

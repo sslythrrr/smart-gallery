@@ -7,6 +7,9 @@ import com.sslythrrr.galeri.data.AppDatabase
 import com.sslythrrr.galeri.data.dao.DetectedObjectDao
 import com.sslythrrr.galeri.data.dao.DetectedTextDao
 import com.sslythrrr.galeri.data.dao.ScannedImageDao
+import com.sslythrrr.galeri.data.dao.SearchHistoryDao
+import com.sslythrrr.galeri.data.entity.ScannedImage
+import com.sslythrrr.galeri.data.entity.SearchHistory
 import com.sslythrrr.galeri.ml.IntentOnnxProcessor
 import com.sslythrrr.galeri.ml.IntentResult
 import com.sslythrrr.galeri.ml.NerOnnxProcessor
@@ -17,21 +20,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.Locale
 
 data class ChatMessage(
     val text: String,
     val isUser: Boolean,
     val timestamp: Long = System.currentTimeMillis(),
-    val images: List<String> = emptyList(),
+    val images: List<ScannedImage> = emptyList(),
     val showAllImagesButton: Boolean = false
 )
 
 class ChatbotViewModel : ViewModel() {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
-
+    private val _allFilteredImages = MutableStateFlow<List<ScannedImage>>(emptyList())
+    val allFilteredImages: StateFlow<List<ScannedImage>> = _allFilteredImages.asStateFlow()
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -46,6 +49,7 @@ class ChatbotViewModel : ViewModel() {
     private var detectedObjectDao: DetectedObjectDao? = null
     private var detectedTextDao: DetectedTextDao? = null
     private var scannedImageDao: ScannedImageDao? = null
+    private var searchHistoryDao: SearchHistoryDao? = null
 
     fun initializeProcessors(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -55,6 +59,7 @@ class ChatbotViewModel : ViewModel() {
                 detectedObjectDao = database.detectedObjectDao()
                 detectedTextDao = database.detectedTextDao()
                 scannedImageDao = database.scannedImageDao()
+                searchHistoryDao = database.searchHistoryDao()
 
                 _intentStatus.value = "Menginisialisasi Intent..."
                 intentProcessor = IntentOnnxProcessor(context)
@@ -94,7 +99,6 @@ class ChatbotViewModel : ViewModel() {
         _messages.value = _messages.value + userMessage
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
-
             try {
                 if (isIntentInitialized && isNerInitialized &&
                     intentProcessor != null && nerProcessor != null
@@ -102,7 +106,7 @@ class ChatbotViewModel : ViewModel() {
                     try {
                         val intentResult = intentProcessor?.processQuery(message)
                         val nerResult = nerProcessor?.processQuery(message)
-                        generateResponse(intentResult, nerResult)
+                        generateResponse(intentResult, nerResult, message)
                     } catch (e: Exception) {
                         "❌ Error processing: ${e.message}\n\n${fallbackResponse(message)}"
                     }
@@ -149,7 +153,8 @@ class ChatbotViewModel : ViewModel() {
 
     private suspend fun generateResponse(
         intentResult: IntentResult?,
-        nerResult: NerResult?
+        nerResult: NerResult?,
+        originalQuery: String
     ): String {
         val responseBuilder = StringBuilder()
         if (intentResult != null) {
@@ -191,11 +196,12 @@ class ChatbotViewModel : ViewModel() {
         }
         if (intentResult?.intent == "cari_gambar") {
             val entities = nerResult?.entities
-            if (entities != null) {
+            if (entities != null && entities.isNotEmpty()) {
                 val filteredImages = filterByNER(entities)
                 setAllFilteredImages(filteredImages)
 
                 if (filteredImages.isNotEmpty()) {
+                    searchHistoryDao?.insert(SearchHistory(query = originalQuery))
                     val entityDescription = entityDescription(entities)
                     responseBuilder.append("\n")
                     val template = responseTemplate.random()
@@ -262,11 +268,7 @@ class ChatbotViewModel : ViewModel() {
         "Dapat %d gambar yang sesuai sama '%s'"
     )
 
-
-    private val _allFilteredImages = MutableStateFlow<List<String>>(emptyList())
-    val allFilteredImages: StateFlow<List<String>> = _allFilteredImages.asStateFlow()
-
-    fun setAllFilteredImages(images: List<String>) {
+    fun setAllFilteredImages(images: List<ScannedImage>) {
         _allFilteredImages.value = images
     }
 
@@ -291,106 +293,48 @@ class ChatbotViewModel : ViewModel() {
         return descriptions.joinToString(" dan ")
     }
 
-    private suspend fun filterByNER(entities: Map<String, List<String>>): List<String> {
+    private suspend fun filterByNER(entities: Map<String, List<String>>): List<ScannedImage> {
         return withContext(Dispatchers.IO) {
             try {
-                val detectedObjectDao = detectedObjectDao
-                val detectedTextDao = detectedTextDao
-                val scannedImageDao = scannedImageDao
-
-                if (detectedObjectDao == null || detectedTextDao == null || scannedImageDao == null) {
-                    return@withContext emptyList<String>()
+                if (entities.isEmpty()) {
+                    return@withContext emptyList()
                 }
 
-                val allMatchingPaths = mutableSetOf<String>()
-                var isFirstEntity = true
+                var resultImages: Set<ScannedImage>? = null
 
-                entities.forEach { (entityType, values) ->
-                    val currentPaths = mutableSetOf<String>()
-
-                    values.forEach { value ->
-                        when (entityType) {
-                            "label" -> {
-                                val objects = detectedObjectDao.getImagesByLabel(value)
-                                objects.forEach { obj -> currentPaths.add(obj.path) }
-                            }
-
-                            "text" -> {
-                                val textPaths = detectedTextDao.searchImagesByText(value)
-                                currentPaths.addAll(textPaths)
-                            }
-
-                            "album" -> {
-                                val images = scannedImageDao.getImagesByAlbum(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "date" -> {
-                                val year = value.toInt()
-                                val images = scannedImageDao.getImagesByYear(year)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "name" -> {
-                                val images = scannedImageDao.getImagesByName(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "type" -> {
-                                val images = scannedImageDao.getImagesByFormat(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "location" -> {
-                                val images = scannedImageDao.getImagesByLocation(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "month" -> {
-                                val images = scannedImageDao.getImagesByMonth(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "day" -> {
-                                val day = value.toInt()
-                                val images = scannedImageDao.getImagesByDay(day)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-                            "path" -> {
-                                val images = scannedImageDao.getImagesByPath(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
-                            }
-
-                            "resolution" -> {
-                                val images = scannedImageDao.getImagesByResolution(value)
-                                images.forEach { img -> currentPaths.add(img.path) }
+                for ((type, values) in entities) {
+                    if (values.isNotEmpty()) {
+                        val currentImagesForThisType = mutableSetOf<ScannedImage>()
+                        for (value in values) {
+                            when (type) {
+                                "label" -> currentImagesForThisType.addAll(detectedObjectDao!!.getImagesByLabel(value))
+                                "album" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByAlbum(value))
+                                "date" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByYear(value.toInt()))
+                                "name" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByName(value))
+                                "type" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByFormat(value))
+                                "location" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByLocation(value))
+                                "month" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByMonth(value))
+                                "day" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByDay(value.toInt()))
+                                "path" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByPath(value))
+                                "resolution" -> currentImagesForThisType.addAll(scannedImageDao!!.getImagesByResolution(value))
                             }
                         }
-                    }
-                    if (isFirstEntity) {
-                        allMatchingPaths.addAll(currentPaths)
-                        isFirstEntity = false
-                    } else {
-                        allMatchingPaths.retainAll(currentPaths)
-                    }
-                    if (allMatchingPaths.isEmpty()) {
-                        return@withContext emptyList<String>()
+
+                        resultImages = resultImages?.intersect(currentImagesForThisType)
+                            ?: currentImagesForThisType
+
+                        if (resultImages.isEmpty()) {
+                            return@withContext emptyList()
+                        }
                     }
                 }
-                allMatchingPaths.toList().sortedByDescending { path ->
-                    try {
-                        File(path).lastModified()
-                    } catch (_: Exception) {
-                        0L
-                    }
-                }
+                return@withContext resultImages?.toList()?.sortedByDescending { it.tanggal } ?: emptyList()
             } catch (e: Exception) {
                 println("❌ Error filtering images: ${e.message}")
-                emptyList()
+                return@withContext emptyList()
             }
         }
     }
-
     fun clearMessages() {
         _messages.value = emptyList()
     }

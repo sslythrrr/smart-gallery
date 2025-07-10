@@ -4,7 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "scanned_images")
+@Entity(tableName = "deteksi_gambar")
 data class ScannedImage(
     @PrimaryKey
     @ColumnInfo(name = "uri") val uri: String,
@@ -23,8 +23,10 @@ data class ScannedImage(
     @ColumnInfo(name = "lokasi") val lokasi: String? = null,
     @ColumnInfo(name = "fetch_lokasi") val fetchLokasi: Boolean = false,
     @ColumnInfo(name = "retry_lokasi") val retryLokasi: Int = 0,
-    @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
-    @ColumnInfo(name = "is_archive") val isArchive: Boolean = false,
-    @ColumnInfo(name = "is_deleted") val isDeleted: Boolean = false,
-    @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null
+    @ColumnInfo(name = "thumbnail_path") val thumbnailPath: String? = null,
+    @ColumnInfo(name = "file_hash", index = true) val fileHash: String? = null,
+    @ColumnInfo(name = "is_trashed", defaultValue = "0") val isTrashed: Boolean = false,
+    @ColumnInfo(name = "trashed_timestamp") val trashedTimestamp: Long? = null,
+    @ColumnInfo(name = "is_favorite", defaultValue = "0") val isFavorite: Boolean = false,
+    @ColumnInfo(name = "collections") val collections: String? = null
 )

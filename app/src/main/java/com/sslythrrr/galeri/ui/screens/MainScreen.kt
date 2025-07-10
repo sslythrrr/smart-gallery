@@ -30,12 +30,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -67,11 +70,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.paging.compose.collectAsLazyPagingItems
+import com.sslythrrr.galeri.ui.components.AddToCollectionDialog
 import com.sslythrrr.galeri.ui.components.BottomNavigationBar
 import com.sslythrrr.galeri.ui.media.Album
-import com.sslythrrr.galeri.ui.media.Media
 import com.sslythrrr.galeri.ui.screens.mainscreen.Chatbot
 import com.sslythrrr.galeri.ui.screens.mainscreen.GalleryScreen
 import com.sslythrrr.galeri.ui.screens.mainscreen.Management
@@ -89,13 +93,13 @@ import com.sslythrrr.galeri.ui.theme.TextLightGray
 import com.sslythrrr.galeri.ui.theme.TextWhite
 import com.sslythrrr.galeri.viewmodel.ChatbotViewModel
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun MainScreen(
     context: Context,
-    onMediaClick: (Media) -> Unit,
     onAlbumClick: (Album) -> Unit,
     viewModel: MediaViewModel,
     isDarkTheme: Boolean,
@@ -106,16 +110,21 @@ fun MainScreen(
     onShowAllImages: () -> Unit = {},
     onThemeChange: (Boolean) -> Unit,
     onAboutClick: () -> Unit,
-    onContactClick: () -> Unit
+    onContactClick: () -> Unit,
+    onTrashClick: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 1)
 
+    val pagerFlow by viewModel.mediaPager.collectAsState()
+    val lazyPagingItems = pagerFlow?.collectAsLazyPagingItems()
 
     var isNavigatingBack by remember { mutableStateOf(false) }
 
     LaunchedEffect(isNavigatingBack) {
         onNavigationStateChange(isNavigatingBack)
     }
+
+    val showAiMenu by viewModel.showAiAnalysisMenu.collectAsState()
 
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage == 1) {
@@ -141,24 +150,69 @@ fun MainScreen(
     val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
-    var isTransitioning by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isSelectionMode) { viewModel.clearSelection() }
 
-    val handleMediaLongClick: (Media) -> Unit = { media ->
-        if (!isSelectionMode) {
-            viewModel.selectionMode(true)
+    val showPrompts by viewModel.showAiPrompts.collectAsState()
+    var showObjectDialog by remember { mutableStateOf(false) }
+    var showTextDialog by remember { mutableStateOf(false) }
+
+    var showCollectionDialog by remember { mutableStateOf(false) }
+    val collections by viewModel.collections.collectAsState()
+
+// LaunchedEffect ini hanya untuk memicu dialog pertama kali
+    LaunchedEffect(showPrompts) {
+        if (showPrompts) {
+            delay(1000) // Jeda agar tidak mendadak
+            showObjectDialog = true
+            viewModel.aiPromptsShown() // Tandai bahwa sinyal sudah diterima
         }
-        viewModel.selectingMedia(media)
     }
 
-    val handleMediaClick: (Media) -> Unit = { media ->
-        if (isSelectionMode) {
-            viewModel.selectingMedia(media)
-        } else {
-            onMediaClick(media)
-        }
+// Dialog untuk Object Detector
+    if (showObjectDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showObjectDialog = false
+                showTextDialog = true // Lanjut ke dialog kedua
+            },
+            title = { Text("Deteksi Label") },
+            text = { Text("Izinkan aplikasi mendeteksi label gambar Anda. Proses ini akan berjalan di latar belakang.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.startObjectDetection(context)
+                    showObjectDialog = false
+                    showTextDialog = true
+                }) { Text("Izinkan") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showObjectDialog = false
+                    showTextDialog = true
+                }) { Text("Lain Kali") }
+            }
+        )
     }
+
+/*
+    if (showTextDialog) {
+        AlertDialog(
+            onDismissRequest = { showTextDialog = false },
+            title = { Text("Analisis Teks (AI)") },
+            text = { Text("Izinkan aplikasi membaca teks di dalam foto Anda (misal: dari screenshot, poster)? Proses ini juga berjalan di latar belakang.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.startTextRecognition(context)
+                    showTextDialog = false
+                }) { Text("Izinkan") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showTextDialog = false
+                }) { Text("Lain Kali") }
+            }
+        )
+    }*/
 
     val shareSelectedMedia = {
         val uris = selectedMedia.map { it.uri }.toList()
@@ -171,14 +225,49 @@ fun MainScreen(
         context.startActivity(Intent.createChooser(shareIntent, "Bagikan ke"))
     }
 
-    // Fungsi untuk konfirmasi penghapusan
-    val confirmDelete = {
-        // Implementasi dialog konfirmasi hapus media
-        // ...
-    }
-
     var showDeleteConfirmation by remember { mutableStateOf(false) }
-
+    var showCbDeleteConfirmation by remember { mutableStateOf(false) }
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Pindahkan ke Sampah?") },
+            text = { Text("Item ini akan dihapus permanen setelah 7 hari. Anda dapat memulihkannya dari sampah.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.moveMediaToTrash(selectedMedia.toList(), context)
+                        showDeleteConfirmation = false
+                        viewModel.clearSelection()
+                        lazyPagingItems?.refresh()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Ya, Pindahkan")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteConfirmation = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+    if (showCollectionDialog) {
+        AddToCollectionDialog(
+            collections = collections,
+            onDismiss = { showCollectionDialog = false },
+            onCollectionSelected = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            },
+            onNewCollection = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            }
+        )
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -198,9 +287,13 @@ fun MainScreen(
                         selectedCount = selectedMedia.size,
                         onSelectAll = { viewModel.selectMedia(context) },
                         onClearSelection = { viewModel.clearSelection() },
-                        onDelete = confirmDelete,
+                        onDelete = { showDeleteConfirmation = true },
                         onShare = shareSelectedMedia,
-                        isDarkTheme = isDarkTheme
+                        isDarkTheme = isDarkTheme,
+                        onAddToCollection = {
+                            viewModel.loadCollections(context)
+                            showCollectionDialog = true
+                        }
                     )
                 } else {
                     Box(
@@ -293,21 +386,46 @@ fun MainScreen(
                                             },
                                             isDarkTheme = isDarkTheme
                                         )
+                                    if (showAiMenu) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(1.dp)
+                                                .padding(horizontal = 16.dp)
+                                                .background(
+                                                    if (isDarkTheme) TextGray.copy(alpha = 0.2f) else TextGrayDark.copy(
+                                                        alpha = 0.1f
+                                                    )
+                                                )
+                                        )
+                                        DropdownClickableItem(
+                                            icon = Icons.Default.AutoAwesome,
+                                            title = "Mulai Analisis",
+                                            subtitle = "Jalankan model deteksi",
+                                            onClick = {
+                                                viewModel.startObjectDetection(context)
+                                                //viewModel.startTextRecognition(context)
+                                                viewModel.checkAiWorkerStatus(context)
+                                                dropdownExpanded = false
+                                            },
+                                            isDarkTheme = isDarkTheme
+                                        )
+                                    }
                                     }
                                     if (pagerState.currentPage == 0) {
                                         DropdownClickableItem(
                                             icon = Icons.Filled.Delete,
                                             title = "Hapus Pesan",
-                                            subtitle = "Bersihkan layar chatbot ",
+                                            subtitle = "Bersihkan layar chatbot",
                                             onClick = {
-                                                showDeleteConfirmation = true
+                                                showCbDeleteConfirmation = true
                                             },
                                             isDarkTheme = isDarkTheme
                                         )
-                                        if (showDeleteConfirmation) {
+                                        if (showCbDeleteConfirmation) {
                                             AlertDialog(
                                                 onDismissRequest = {
-                                                    showDeleteConfirmation = false
+                                                    showCbDeleteConfirmation = false
                                                     dropdownExpanded = false
                                                 },
                                                 title = {
@@ -326,7 +444,7 @@ fun MainScreen(
                                                     Button(
                                                         onClick = {
                                                             chatbotViewModel.clearMessages()
-                                                            showDeleteConfirmation = false
+                                                            showCbDeleteConfirmation = false
                                                             dropdownExpanded = false
                                                         },
                                                         colors = ButtonDefaults.buttonColors(
@@ -341,7 +459,7 @@ fun MainScreen(
                                                 },
                                                 dismissButton = {
                                                     TextButton(onClick = {
-                                                        showDeleteConfirmation = false
+                                                        showCbDeleteConfirmation = false
                                                         dropdownExpanded = false
                                                     }) {
                                                         Text(
@@ -383,31 +501,16 @@ fun MainScreen(
                     1 -> {
                         Box(modifier = Modifier.fillMaxSize()) {
                             Column(modifier = Modifier.fillMaxSize()) {
-                                val mediaPager by viewModel.mediaPager.collectAsState()
                                 val albumsState by viewModel.albums.collectAsState()
-                                val lazyPagingItems = remember(mediaPager) {
-                                    mediaPager?.flow
-                                }?.collectAsLazyPagingItems()
 
                                 GalleryScreen(
                                     lazyPagingItems = lazyPagingItems,
                                     albums = albumsState,
-                                    onMediaClick = handleMediaClick,
-                                    onLongClick = handleMediaLongClick,
                                     onAlbumClick = onAlbumClick,
-                                    onSeeAllClick = {
-                                        if (!isTransitioning) {
-                                            isTransitioning = true
-                                            coroutineScope.launch {
-                                                navController.navigate("allMedia")
-                                                isTransitioning = false
-                                            }
-                                        }
-                                    },
-                                    selectedMedia = selectedMedia,
                                     isDarkTheme = isDarkTheme,
                                     modifier = Modifier.fillMaxSize(),
-                                    viewModel = viewModel
+                                    viewModel = viewModel,
+                                    navController = navController
                                 )
                             }
                             if (isNavigatingBack) {
@@ -442,9 +545,15 @@ fun MainScreen(
                     2 -> {
                         Column(modifier = Modifier.fillMaxSize()) {
                             Management(
+                                onCardClick = { action ->
+                                    when (action) {
+                                        "trash" -> onTrashClick()
+                                    }
+                                },
                                 navController = navController,
                                 isDarkTheme = isDarkTheme,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                viewModel = viewModel
                             )
                         }
                     }
@@ -476,7 +585,9 @@ fun SelectionTopBar(
     onClearSelection: () -> Unit,
     onDelete: () -> Unit,
     onShare: () -> Unit,
-    isDarkTheme: Boolean
+    onAddToCollection: () -> Unit,
+    isDarkTheme: Boolean,
+    isSelectionInCollection: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -527,12 +638,19 @@ fun SelectionTopBar(
                         .clickable { onShare() })
 
                 Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Hapus",
-                    tint = Color.Red,
+                    imageVector = Icons.Default.AddPhotoAlternate,
+                    contentDescription = "Tambahkan ke Koleksi",
+                    tint = if (isDarkTheme) TextLightGray else TextBlack,
                     modifier = Modifier
                         .size(24.dp)
-                        .clickable { onDelete() })
+                        .clickable { onAddToCollection() }
+                )
+                Icon(
+                    imageVector = if (isSelectionInCollection) Icons.Default.Remove else Icons.Default.Delete,
+                    contentDescription = if (isSelectionInCollection) "Keluarkan dari Koleksi" else "Hapus",
+                    tint = if (isSelectionInCollection) (if(isDarkTheme) TextWhite else TextBlack) else Color.Red,
+                    modifier = Modifier.size(24.dp).clickable { onDelete() }
+                )
             }
         }
     }

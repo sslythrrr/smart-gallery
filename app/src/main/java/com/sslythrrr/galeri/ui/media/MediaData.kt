@@ -13,15 +13,19 @@ data class Media(
     val albumName: String?,
     val dateAdded: Long,
     val dateTaken: Long,
+    val width: Int = 0,
+    val height: Int = 0,
     val duration: Long = 0,
     val size: Long = 0,
     val relativePath: String = "",
-    val isFavorite: Boolean? = null,
+    val isFavorite: Boolean = false,
     val isArchive: Boolean? = null,
     val isDeleted: Boolean? = null,
     val locationName: String? = null,
     val formattedSize: String? = null,
-    val formattedDate: String? = null
+    val formattedDate: String? = null,
+    val thumbnailPath: String? = null,
+    val fileHash: String? = null
 )
 
 enum class MediaType {

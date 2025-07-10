@@ -4,14 +4,15 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.sslythrrr.galeri.viewmodel.MediaViewModel
+import android.app.Application
 
 class MediaFactory(
+    private val application: Application
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MediaViewModel::class.java)) {
-            val viewModel = MediaViewModel()
             @Suppress("UNCHECKED_CAST")
-            return viewModel as T
+            return MediaViewModel(application) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

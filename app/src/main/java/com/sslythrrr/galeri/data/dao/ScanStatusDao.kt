@@ -12,25 +12,28 @@ interface ScanStatusDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertOrUpdate(scanStatus: ScanStatus): Long
 
-    @Query("SELECT * FROM scan_status WHERE worker_name = :workerName")
+    @Query("SELECT * FROM status_pemindaian WHERE worker_name = :workerName")
     fun getScanStatus(workerName: String): ScanStatus?
 
-    @Query("SELECT * FROM scan_status")
+    @Query("SELECT * FROM status_pemindaian")
     fun getAllScanStatus(): List<ScanStatus>
 
-    @Query("SELECT * FROM scan_status")
+    @Query("SELECT * FROM status_pemindaian")
     fun observeAllScanStatus(): Flow<List<ScanStatus>>
 
-    /* @Query("SELECT * FROM scan_status WHERE worker_name = :workerName")
+    @Query("SELECT status FROM status_pemindaian WHERE worker_name = :workerName LIMIT 1")
+    suspend fun getStatusForWorker(workerName: String): String?
+
+    /* @Query("SELECT * FROM status_pemindaian WHERE worker_name = :workerName")
      suspend fun getScanStatus(workerName: String): ScanStatus?*/
 
     // Tambahkan method baru:
-    @Query("SELECT * FROM scan_status WHERE worker_name = :workerName")
+    @Query("SELECT * FROM status_pemindaian WHERE worker_name = :workerName")
     suspend fun getScanStatusSuspend(workerName: String): ScanStatus?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateSuspend(scanStatus: ScanStatus): Long
 
-    @Query("UPDATE scan_status SET status = :status WHERE worker_name = :workerName")
+    @Query("UPDATE status_pemindaian SET status = :status WHERE worker_name = :workerName")
     suspend fun updateWorkerStatus(workerName: String, status: String)
 }

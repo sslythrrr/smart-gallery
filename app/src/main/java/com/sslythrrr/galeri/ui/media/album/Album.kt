@@ -2,18 +2,24 @@ package com.sslythrrr.galeri.ui.media.album
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sslythrrr.galeri.ui.media.Album
 import com.sslythrrr.galeri.ui.media.MediaThumbnail
+import com.sslythrrr.galeri.ui.theme.BlueAccent
+import com.sslythrrr.galeri.ui.theme.GoldAccent
 import com.sslythrrr.galeri.ui.theme.SurfaceDark
 import com.sslythrrr.galeri.ui.theme.SurfaceLight
 
@@ -39,6 +47,7 @@ fun AlbumItem(
     onClick: (Album) -> Unit,
     modifier: Modifier = Modifier,
     isDarkTheme: Boolean = true,
+    isAiAlbum: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -50,8 +59,17 @@ fun AlbumItem(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(1.dp)
+            .padding(2.dp)
             .scale(scale)
+            .border(
+                width = if (isAiAlbum) 0.35.dp else 0.1.dp,
+                color = if (isAiAlbum) {
+                    if (isDarkTheme) GoldAccent
+                    else BlueAccent
+                } else if (isDarkTheme) Color.Black
+                else Color.White,
+                shape = RoundedCornerShape(8.dp)
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
@@ -90,6 +108,19 @@ fun AlbumItem(
                             )
                         )
                 )
+                if (isAiAlbum){
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp) .align(Alignment.TopEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Album AI",
+                            tint = if (isDarkTheme) GoldAccent else BlueAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)

@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -17,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.util.UnstableApi
 import com.sslythrrr.galeri.navigation.Navigation
 import com.sslythrrr.galeri.ui.theme.SmartGalleryTheme
 import com.sslythrrr.galeri.ui.utils.Notification
@@ -30,12 +28,11 @@ import com.sslythrrr.galeri.viewmodel.factory.ThemeFactory
 import com.sslythrrr.galeri.worker.LocationRetryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var mediaViewModel: MediaViewModel
     private val viewModel: MediaViewModel by viewModels {
-        MediaFactory()
+        MediaFactory(application)
     }
     private val themeViewModel: ThemeViewModel by viewModels {
         ThemeFactory(applicationContext)
@@ -60,12 +57,6 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            copyAsset("yolo11_cls.tflite")
-            copyAsset("distilbert_ner.tflite")
-            copyAsset("distilbert_intent.tflite")
-            copyAsset("model_metadata_ner.json")
-            copyAsset("model_metadata_intent.json")
-            copyAsset("vocab.txt")
             LocationRetryManager.checkAndRetryLocationFetch(this@MainActivity)
         }
 
@@ -122,17 +113,5 @@ class MainActivity : ComponentActivity() {
 
     private fun requestPermissions() {
         requestPermissionLauncher.launch(PermissionUtils.getRequiredPermissions())
-    }
-
-    @OptIn(UnstableApi::class)
-    private fun copyAsset(assetFileName: String) {
-        val file = File(filesDir, assetFileName)
-        if (!file.exists()) {
-            assets.open(assetFileName).use { inputStream ->
-                file.outputStream().use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-        }
     }
 }

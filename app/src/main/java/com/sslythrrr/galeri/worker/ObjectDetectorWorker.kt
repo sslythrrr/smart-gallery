@@ -56,7 +56,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
 
         try {
             objectDetector.initialize()
-            val scannedPaths = imageDao.getAllScannedUris()
+            val scannedPaths = imageDao. getAllImageUris()
             val processedPaths = objectDao.getAllProcessedPaths().toSet()
             val pathsToProcess = scannedPaths.filter { it !in processedPaths }
             val (previousTotal, previousProcessed) = getCurrentProgress()

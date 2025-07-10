@@ -1,27 +1,23 @@
 package com.sslythrrr.galeri.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.rememberAsyncImagePainter
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sslythrrr.galeri.ui.media.MediaItem
 import com.sslythrrr.galeri.ui.theme.*
 import com.sslythrrr.galeri.viewmodel.ChatbotViewModel
-import java.io.File
+import com.sslythrrr.galeri.viewmodel.MediaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +28,8 @@ fun ChatbotResults(
     isDarkTheme: Boolean
 ) {
     val allFilteredImages by viewModel.allFilteredImages.collectAsState()
+    // Kita butuh akses ke MediaViewModel untuk menggunakan fungsi konverter .toMedia()
+    val mediaViewModel: MediaViewModel = viewModel()
 
     Scaffold(
         topBar = {
@@ -65,26 +63,21 @@ fun ChatbotResults(
                 .fillMaxSize()
                 .padding(padding)
                 .background(if (isDarkTheme) DarkBackground else LightBackground)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(1.dp),
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            items(allFilteredImages) { path ->
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onImageClick(path) }
-                ) {
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            model = File(path)
-                        ),
-                        contentDescription = "Filtered image",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+            // Looping List<ScannedImage>
+            items(allFilteredImages, key = { it.uri }) { scannedImage ->
+                // 1. Ubah ScannedImage menjadi objek Media yang lengkap
+                val media = mediaViewModel.run { scannedImage.toMedia() }
+
+                // 2. Gunakan MediaItem yang sudah pintar menangani thumbnail
+                MediaItem(
+                    media = media,
+                    onClick = { onImageClick(media.uri.toString()) },
+                    isDarkTheme = isDarkTheme
+                )
             }
         }
     }

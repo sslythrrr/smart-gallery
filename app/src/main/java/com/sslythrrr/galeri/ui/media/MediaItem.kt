@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,115 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MediaItem(
+    media: Media,
+    onClick: (Media) -> Unit,
+    modifier: Modifier = Modifier,
+    isDarkTheme: Boolean,
+    isSelected: Boolean = false,
+    onLongClick: ((Media) -> Unit)? = null
+) {
+    val placeholderColor = if (isDarkTheme) Color.DarkGray else Color.LightGray
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .combinedClickable(
+                onClick = { onClick(media) },
+                onLongClick = { onLongClick?.invoke(media) }
+            )
+            .background(placeholderColor)
+    ) {
+        val displayUri = if (media.type == MediaType.VIDEO && !media.thumbnailPath.isNullOrEmpty()) {
+            File(media.thumbnailPath).toUri()
+        } else {
+            media.uri
+        }
+
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(displayUri)
+                .crossfade(true)
+                .size(256) // Ukuran thumbnail bisa kita standarkan
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .placeholder(placeholderColor.toArgb().toDrawable())
+                .error(placeholderColor.toArgb().toDrawable())
+                .build(),
+            contentDescription = media.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .border(
+                    width = 0.1.dp,
+                    color = if (isDarkTheme) Color.Black else Color.White,
+                )
+        )
+
+        if (media.type == MediaType.VIDEO) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Video",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(28.dp)
+                    .align(Alignment.Center)
+                    .background(
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    )
+                    .padding(4.dp)
+            )
+        }
+
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color = Color(0x80000000))
+            )
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .background(color = Color.Blue, shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = Color.Black.copy(alpha = 0.1f)
+            ) {
+                if (media.type == MediaType.VIDEO) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "Video",
+                            tint = SurfaceLight,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun MediaThumbnail(
@@ -94,81 +204,6 @@ fun MediaThumbnail(
                     )
                     .padding(4.dp)
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun MediaItem(
-    media: Media,
-    onClick: (Media) -> Unit,
-    modifier: Modifier = Modifier,
-    isDarkTheme: Boolean,
-    isSelected: Boolean = false,
-    onLongClick: ((Media) -> Unit)? = null
-) {
-    val placeholderColor = if (isDarkTheme) Color.DarkGray else Color.LightGray
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .combinedClickable(
-                onClick = { onClick(media) },
-                onLongClick = { onLongClick?.invoke(media) }
-            )
-            .background(placeholderColor)
-    ) {
-        MediaThumbnail(
-            uri = media.uri,
-            mediaType = media.type,
-            placeholderColor = placeholderColor,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(color = Color(0x80000000))
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .background(color = Color.Blue, shape = CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Selected",
-                    tint = Color.White,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
-        } else {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp),
-                shape = RoundedCornerShape(4.dp),
-                color = Color.Black.copy(alpha = 0.1f)
-            ) {
-                if (media.type == MediaType.VIDEO) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = "Video",
-                            tint = SurfaceLight,
-                            modifier = Modifier.size(10.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }

@@ -3,6 +3,8 @@ package com.sslythrrr.galeri.worker
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -14,13 +16,18 @@ import androidx.work.workDataOf
 import com.sslythrrr.galeri.data.AppDatabase
 import com.sslythrrr.galeri.data.entity.ScannedImage
 import com.sslythrrr.galeri.ui.utils.Notification
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Calendar
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 class MediaScanWorker(
-    context: Context,
+    val context: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(context, workerParams) {
     private val tag = "MediaScanWorker"
@@ -28,8 +35,26 @@ class MediaScanWorker(
     private val batchSize = 100
     private val notificationId = Notification.MEDIA_SCAN_NOTIFICATION_ID
 
+    private data class MediaInfo(
+        val id: Long,
+        val uri: Uri,
+        val path: String,
+        val name: String,
+        val size: Long,
+        val type: String,
+        val album: String,
+        val width: Int,
+        val height: Int,
+        val date: Long
+    )
+
     override suspend fun doWork(): Result {
-        Log.d(tag, "🔥 Media Scan Worker dimulai!")
+        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val hasInitialScanCompleted = prefs.getBoolean("initial_scan_completed", false)
+        if (!hasInitialScanCompleted) {
+            Log.d(tag, "⏭️ Pemindaian awal belum selesai, skip worker ini.")
+            return Result.success()
+        }
 
         val needsNotification = inputData.getBoolean("needs_notification", false)
         if (needsNotification) {
@@ -37,7 +62,7 @@ class MediaScanWorker(
             Notification.showProgressNotification(
                 applicationContext,
                 notificationId,
-                "Memindai Gambar",
+                "Memindai Media",
                 "Memulai proses pemindaian...",
                 0,
                 100
@@ -47,47 +72,57 @@ class MediaScanWorker(
         try {
             val contentResolver = applicationContext.contentResolver
             val scannedUris = imageDao.getAllScannedUris().toSet()
-            val imagesToScan = imageScanning(contentResolver, scannedUris)
+            val mediaToScan = scanAllMedia(contentResolver, scannedUris)
 
-            if (imagesToScan.isEmpty() && needsNotification) {
-                Notification.cancelNotification(applicationContext, notificationId)
+            if (mediaToScan.isEmpty()) {
+                Log.d(tag, "✅ Tidak ada media baru untuk dipindai.")
+                if (needsNotification) {
+                    Notification.cancelNotification(applicationContext, notificationId)
+                }
                 return Result.success()
             }
 
-            processImageBatches(imagesToScan, needsNotification)
+            processMediaBatches(mediaToScan, needsNotification)
 
-            if (needsNotification && imagesToScan.isNotEmpty()) {
+            if (needsNotification && mediaToScan.isNotEmpty()) {
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Pemindaian Gambar Selesai",
-                    "${imagesToScan.size} gambar telah dipindai \uD83E\uDD96"
+                    "Pemindaian Media Selesai",
+                    "${mediaToScan.size} media baru telah dipindai 🖼️📹"
                 )
             }
 
             return Result.success()
         } catch (e: Exception) {
-            Log.e(tag, "❌ Error during scan", e)
-
-            val needsNotification = inputData.getBoolean("needs_notification", false)
+            Log.e(tag, "❌ Error selama pemindaian", e)
             if (needsNotification) {
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Pemindaian Gambar Gagal",
-                    "Terjadi kesalahan saat memindai gambar"
+                    "Pemindaian Gagal",
+                    "Terjadi kesalahan saat memindai media"
                 )
             }
-
             return Result.failure()
         }
     }
 
-    private fun imageScanning(
+    private fun scanAllMedia(
         contentResolver: ContentResolver,
         scannedUris: Set<String>
-    ): List<ImageInfo> {
-        val result = mutableListOf<ImageInfo>()
+    ): List<MediaInfo> {
+        val result = mutableListOf<MediaInfo>()
+        scanImages(contentResolver, scannedUris, result)
+        scanVideos(contentResolver, scannedUris, result)
+        return result
+    }
+
+    private fun scanImages(
+        contentResolver: ContentResolver,
+        scannedUris: Set<String>,
+        result: MutableList<MediaInfo>
+    ) {
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.RELATIVE_PATH,
@@ -103,11 +138,11 @@ class MediaScanWorker(
 
         contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, null
+            projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC"
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val pathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH) // Ganti getColumnIndexOrThrow dengan getColumnIndex
+            val pathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
             val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
@@ -118,23 +153,20 @@ class MediaScanWorker(
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val fileName = cursor.getString(nameColumn)
-                val relativePath = cursor.getString(pathColumn)
-                val baseStorage = Environment.getExternalStorageDirectory().absolutePath
-                val path = "$baseStorage/$relativePath$fileName"
-                val uri =
-                    ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                 if (!scannedUris.contains(uri.toString())) {
-                    val dateTaken = if (cursor.isNull(dateTakenColumn)) {
-                        cursor.getLong(dateAddedColumn) * 1000
-                    } else {
-                        cursor.getLong(dateTakenColumn)
-                    }
+                    val fileName = cursor.getString(nameColumn)
+                    val relativePath = cursor.getString(pathColumn) ?: ""
+                    val baseStorage = Environment.getExternalStorageDirectory().absolutePath
+                    val path = "$baseStorage/$relativePath$fileName"
+                    val dateTaken = if (cursor.isNull(dateTakenColumn)) cursor.getLong(dateAddedColumn) * 1000 else cursor.getLong(dateTakenColumn)
+
                     result.add(
-                        ImageInfo(
+                        MediaInfo(
+                            id = id,
                             uri = uri,
                             path = path,
-                            name = cursor.getString(nameColumn),
+                            name = fileName,
                             size = cursor.getLong(sizeColumn),
                             type = cursor.getString(typeColumn),
                             album = cursor.getString(albumColumn),
@@ -146,70 +178,175 @@ class MediaScanWorker(
                 }
             }
         }
-        return result
     }
 
-    private suspend fun processImageBatches(
-        images: List<ImageInfo>,
-        needsNotification: Boolean = false
+    private fun scanVideos(
+        contentResolver: ContentResolver,
+        scannedUris: Set<String>,
+        result: MutableList<MediaInfo>
     ) {
-        val totalBatches = images.chunked(batchSize)
-        var processedImages = 0
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.RELATIVE_PATH,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
+            MediaStore.Video.Media.DATE_TAKEN,
+            MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Video.Media.MIME_TYPE
+        )
+        contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val pathColumn = cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+            val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
+            val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val typeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
 
-        totalBatches.forEach { batch ->
-            val scannedImages = coroutineScope {
-                batch.map { imageInfo ->
-                    async {
-                        try {
-                            val (year, month) = formatDate(imageInfo.date)
-                            val latLng = getLatLongFromExif(applicationContext, imageInfo.uri)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                if (!scannedUris.contains(uri.toString())) {
+                    val fileName = cursor.getString(nameColumn)
+                    val relativePath = cursor.getString(pathColumn) ?: ""
+                    val baseStorage = Environment.getExternalStorageDirectory().absolutePath
+                    val path = "$baseStorage/$relativePath$fileName"
+                    val dateTaken = if (cursor.isNull(dateTakenColumn)) cursor.getLong(dateAddedColumn) * 1000 else cursor.getLong(dateTakenColumn)
+                    result.add(
+                        MediaInfo(
+                            id = id,
+                            uri = uri,
+                            path = path,
+                            name = fileName,
+                            size = cursor.getLong(sizeColumn),
+                            type = cursor.getString(typeColumn),
+                            album = cursor.getString(albumColumn),
+                            width = cursor.getInt(widthColumn),
+                            height = cursor.getInt(heightColumn),
+                            date = dateTaken
+                        )
+                    )
+                }
+            }
+        }
+    }
 
-                            ScannedImage(
-                                uri = imageInfo.uri.toString(),
-                                path = imageInfo.path,
-                                nama = imageInfo.name,
-                                ukuran = imageInfo.size,
-                                type = imageInfo.type,
-                                album = imageInfo.album,
-                                resolusi = "${imageInfo.width}x${imageInfo.height}",
-                                tanggal = imageInfo.date,
-                                tahun = year,
-                                bulan = month,
-                                hari = Calendar.getInstance().apply { timeInMillis = imageInfo.date }
-                                    .get(Calendar.DAY_OF_MONTH),
-                                latitude = latLng?.first,
-                                longitude = latLng?.second,
-                                isFavorite = false,
-                                isArchive = false,
-                                isDeleted = false,
-                                deletedAt = null
-                            )
-                        } catch (e: Exception) {
-                            Log.e(tag, "Error processing image metadata: ${imageInfo.uri}", e)
-                            null
+    private suspend fun processMediaBatches(
+        mediaList: List<MediaInfo>,
+        needsNotification: Boolean = false
+    ) = coroutineScope {
+        var processedCount = 0
+        mediaList.chunked(batchSize).forEach { batch ->
+            val scannedMediaList = batch.map { mediaInfo ->
+                async(Dispatchers.IO) {
+                    try {
+                        val (year, month, day) = formatDate(mediaInfo.date)
+                        val latLng = getLatLongFromExif(applicationContext, mediaInfo.uri)
+                        val fileHash = getFileHash(applicationContext, mediaInfo.uri)
+                        var thumbnailPath: String? = null
+
+                        if (mediaInfo.type.startsWith("video/")) {
+                            thumbnailPath = createVideoThumbnail(applicationContext, mediaInfo.id, mediaInfo.uri)
                         }
+
+                        ScannedImage(
+                            uri = mediaInfo.uri.toString(),
+                            path = mediaInfo.path,
+                            nama = mediaInfo.name,
+                            ukuran = mediaInfo.size,
+                            type = mediaInfo.type,
+                            album = mediaInfo.album,
+                            resolusi = "${mediaInfo.width}x${mediaInfo.height}",
+                            tanggal = mediaInfo.date,
+                            tahun = year,
+                            bulan = month,
+                            hari = day,
+                            latitude = latLng?.first,
+                            longitude = latLng?.second,
+                            thumbnailPath = thumbnailPath,
+                            fileHash = fileHash
+                        )
+                    } catch (e: Exception) {
+                        Log.e(tag, "Error memproses metadata untuk: ${mediaInfo.uri}", e)
+                        null
                     }
-                }.awaitAll().filterNotNull()
+                }
+            }.awaitAll().filterNotNull()
+
+            if (scannedMediaList.isNotEmpty()) {
+                saveToDatabase(scannedMediaList)
             }
 
-            if (scannedImages.isNotEmpty()) {
-                saveToDatabase(scannedImages)
-            }
-
-            processedImages += batch.size
-            val progressPercent = processedImages * 100 / images.size
-
+            processedCount += batch.size
+            val progressPercent = processedCount * 100 / mediaList.size
             setProgress(workDataOf("progress" to progressPercent))
 
             if (needsNotification) {
                 Notification.updateProgressNotification(
                     applicationContext,
                     notificationId,
-                    "Media Scanning",
-                    "Memproses $processedImages dari ${images.size} gambar",
+                    "Memindai Media",
+                    "Memproses $processedCount dari ${mediaList.size} media",
                     progressPercent,
                     100
                 )
+            }
+        }
+    }
+
+    private suspend fun createVideoThumbnail(context: Context, mediaId: Long, videoUri: Uri): String? = withContext(Dispatchers.IO) {
+        val cacheDir = File(context.cacheDir, "thumbs")
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+        val file = File(cacheDir, "thumb_$mediaId.jpg")
+
+        // Jika file sudah ada dan valid, langsung gunakan.
+        if (file.exists() && file.length() > 0) {
+            return@withContext file.absolutePath
+        }
+
+        var retriever: MediaMetadataRetriever? = null
+        try {
+            retriever = MediaMetadataRetriever()
+            retriever.setDataSource(context, videoUri)
+
+            // Coba ambil frame dari detik ke-1. Kualitas diatur ke 80.
+            val bitmap = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+
+            if (bitmap != null) {
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                }
+                // Pastikan file benar-benar tertulis sebelum mengembalikan path
+                if (file.exists() && file.length() > 0) {
+                    Log.d("ThumbnailFactory", "✅ Sukses membuat thumbnail untuk URI: $videoUri -> ${file.absolutePath}")
+                    return@withContext file.absolutePath
+                } else {
+                    Log.e("ThumbnailFactory", "❌ Gagal menyimpan bitmap ke file untuk URI: $videoUri")
+                    return@withContext null
+                }
+            } else {
+                Log.w("ThumbnailFactory", "⚠️ getFrameAtTime mengembalikan null untuk URI: $videoUri")
+                return@withContext null
+            }
+        } catch (e: Exception) {
+            Log.e("ThumbnailFactory", "❌ Error fatal saat membuat thumbnail untuk URI: $videoUri", e)
+            return@withContext null // Penting untuk mengembalikan null jika ada error
+        } finally {
+            try {
+                retriever?.release()
+            } catch (e: Exception) {
+                Log.e("ThumbnailFactory", "Error saat melepaskan retriever.", e)
             }
         }
     }
@@ -226,53 +363,51 @@ class MediaScanWorker(
         }
     }
 
-
     private suspend fun saveToDatabase(scannedImages: List<ScannedImage>) {
         try {
-            val insertedIds = imageDao.insertAll(scannedImages)
-            Log.d(tag, "✅ Database berhasil diupdate: ${insertedIds.size} gambar")
+            imageDao.insertAll(scannedImages)
+            Log.d(tag, "✅ Database berhasil diupdate dengan ${scannedImages.size} media baru")
         } catch (e: Exception) {
             Log.e(tag, "❌ Error menyimpan ke database", e)
         }
     }
 
-
-    data class ImageInfo(
-        val uri: Uri,
-        val path: String,
-        val name: String,
-        val size: Long,
-        val type: String,
-        val album: String,
-        val width: Int,
-        val height: Int,
-        val date: Long
-    )
-
-    private fun formatDate(timestamp: Long): Pair<Int, String> {
+    private fun formatDate(timestamp: Long): Triple<Int, String, Int> {
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
         val monthNumber = calendar.get(Calendar.MONTH) + 1
-        return Pair(
+        return Triple(
             calendar.get(Calendar.YEAR),
-            getMonthName(monthNumber)
+            getMonthName(monthNumber),
+            calendar.get(Calendar.DAY_OF_MONTH)
         )
     }
 
     private fun getMonthName(month: Int): String {
         return when (month) {
-            1 -> "Januari"
-            2 -> "Februari"
-            3 -> "Maret"
-            4 -> "April"
-            5 -> "Mei"
-            6 -> "Juni"
-            7 -> "Juli"
-            8 -> "Agustus"
-            9 -> "September"
-            10 -> "Oktober"
-            11 -> "November"
-            12 -> "Desember"
+            1 -> "Januari"; 2 -> "Februari"; 3 -> "Maret"; 4 -> "April"
+            5 -> "Mei"; 6 -> "Juni"; 7 -> "Juli"; 8 -> "Agustus"
+            9 -> "September"; 10 -> "Oktober"; 11 -> "November"; 12 -> "Desember"
             else -> "Tidak Diketahui"
         }
+    }
+}
+
+private fun getFileHash(context: Context, uri: Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val md = MessageDigest.getInstance("MD5")
+        val buffer = ByteArray(8192)
+        var read: Int
+        while (inputStream.read(buffer).also { read = it } > 0) {
+            md.update(buffer, 0, read)
+        }
+        val digest = md.digest()
+        val sb = StringBuilder()
+        for (b in digest) {
+            sb.append(String.format("%02x", b))
+        }
+        sb.toString()
+    } catch (e: Exception) {
+        null
     }
 }

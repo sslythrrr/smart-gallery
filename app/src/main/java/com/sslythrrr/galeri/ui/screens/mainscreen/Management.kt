@@ -11,30 +11,23 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FilePresent
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VideoFile
@@ -51,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -61,13 +53,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.sslythrrr.galeri.ui.theme.DarkBackground
-import com.sslythrrr.galeri.ui.theme.LightBackground
-import com.sslythrrr.galeri.ui.theme.SearchBarBackground
 import com.sslythrrr.galeri.ui.theme.TextWhite
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -75,6 +63,13 @@ import kotlinx.coroutines.withContext
 import java.text.DecimalFormat
 import kotlin.math.log10
 import kotlin.math.pow
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sslythrrr.galeri.viewmodel.MediaViewModel
 
 data class StorageInfo(
     val totalSpace: Long = 0,
@@ -102,21 +97,26 @@ fun Management(
     isDarkTheme: Boolean = true,
     onCardClick: (String) -> Unit = {},
     navController: NavController,
+    viewModel: MediaViewModel
 ) {
     val context = LocalContext.current
     var storageInfo by remember { mutableStateOf<StorageInfo?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    val cleanableSize by viewModel.cleanableCacheSize.collectAsState()
 
-    val backgroundColor = if (isDarkTheme) DarkBackground else LightBackground
-    val cardColor = if (isDarkTheme) SearchBarBackground else Color.White
-    val textColor = if (isDarkTheme) Color(0xFFFFFFFF) else Color(0xFF121212)
-    val secondaryTextColor = if (isDarkTheme) Color(0xFFAAAAAA) else Color(0xFF666666)
-    val accentColor = if (isDarkTheme) Color(0xFFFFD700) else Color(0xFF2196F3)
-    val borderColor = if (isDarkTheme) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)
-    val progressTrackColor = if (isDarkTheme) Color(0xFF333333) else Color(0xFFE0E0E0)
+    // Modern color scheme
+    val backgroundColor = if (isDarkTheme) Color(0xFF0A0A0A) else Color(0xFFFAFAFA)
+    val surfaceColor = if (isDarkTheme) Color(0xFF1A1A1A) else Color(0xFFf7f2f2)
+    val primaryColor = if (isDarkTheme) Color(0xFF6366F1) else Color(0xFF4F46E5)
+    val textPrimary = if (isDarkTheme) Color(0xFFFFFFFF) else Color(0xFF111827)
+    val textSecondary = if (isDarkTheme) Color(0xFFB3B3B3) else Color(0xFF6B7280)
+    val borderColor = if (isDarkTheme) Color(0xFF2A2A2A) else Color(0xFFE5E7EB)
+    val dangerColor = Color(0xFFEF4444)
+    val storageColor = if (isDarkTheme) Color(0xFF121111) else TextWhite
 
     LaunchedEffect(key1 = Unit) {
         isLoading = true
+        viewModel.calculateCacheSize(context)
 
         val cachedInfo = getCachedStorageInfo(context)
         if (cachedInfo != null) {
@@ -158,278 +158,341 @@ fun Management(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .padding(16.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isLoading) {
-                    LoadingStorageCard(
-                        modifier = Modifier.weight(3f),
-                        cardColor = cardColor,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        borderColor = borderColor,
-                        storageColor = cardColor
-                    )
-                } else {
-                    StorageUsageCard(
-                        modifier = Modifier.weight(3f),
-                        storageInfo = storageInfo ?: StorageInfo(),
-                        usagePercentage = usagePercentage,
-                        storageColor = cardColor,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        accentColor = accentColor,
-                        borderColor = borderColor,
-                        progressTrackColor = progressTrackColor
-                    )
-                }
+            // Storage Overview Section
+            StorageSection(
+                isLoading = isLoading,
+                storageInfo = storageInfo,
+                usagePercentage = usagePercentage,
+                storageColor = storageColor,
+                primaryColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                borderColor = borderColor
+            )
 
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .aspectRatio(1f)
-                        .border(
-                            width = 1.dp,
-                            color = borderColor,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable { onCardClick("Sampah") },
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFF4D4D)),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Sampah",
-                            tint = TextWhite,
-                            modifier = Modifier.size(28.dp)
-                        )
+            QuickActionsSection(
+                viewModel = viewModel,
+                cleanableSize = cleanableSize,
+                onCardClick = onCardClick,
+                navController = navController,
+                onTrashClick = { onCardClick("trash") },
+                surfaceColor = surfaceColor,
+                primaryColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                dangerColor = dangerColor
+            )
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Sampah",
-                            color = TextWhite,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = borderColor,
-                        shape = RoundedCornerShape(12.dp)
-                    ),
-                colors = CardDefaults.cardColors(containerColor = cardColor),
-                shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(cardColor)
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ActionItem(
-                        icon = Icons.Default.CleaningServices,
-                        title = "Bersihkan Media",
-                        subtitle = "45 berkas dapat dibersihkan",
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        onClick = { onCardClick("Bersihkan Media") }
-                    )
-
-                    Divider(color = borderColor)
-
-                    ActionItem(
-                        icon = Icons.Default.ContentCopy,
-                        title = "Cek Duplikat",
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        onClick = { onCardClick("Cek Duplikat") }
-                    )
-
-                    Divider(color = borderColor)
-
-                    ActionItem(
-                        icon = Icons.Default.FilePresent,
-                        title = "Media Berukuran Besar",
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        onClick = {
-                            navController.navigate("largeSizeMedia")
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MenuCard(
-                        icon = Icons.Default.VideoFile,
-                        title = "Berkas Video",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { navController.navigate("videoFiles") }
-                    )
-
-                    MenuCard(
-                        icon = Icons.Default.Description,
-                        title = "Media Dokumen",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { onCardClick("Media Dokumen") }
-                    )
-
-                    MenuCard(
-                        icon = Icons.Default.Archive,
-                        title = "Media Arsip",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { onCardClick("Media Arsip") }
-                    )
-                }
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MenuCard(
-                        icon = Icons.Default.Create,
-                        title = "Buat Koleksi",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { onCardClick("Buat Koleksi") }
-                    )
-
-                    MenuCard(
-                        icon = Icons.Default.Star,
-                        title = "Media Favorit",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { navController.navigate("favoriteMedia") }
-                    )
-
-                    MenuCard(
-                        icon = Icons.AutoMirrored.Filled.Chat,
-                        title = "Riwayat AI",
-                        backgroundColor = cardColor,
-                        iconTint = accentColor,
-                        textColor = textColor,
-                        borderColor = borderColor,
-                        onClick = { onCardClick("Riwayat AI") }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            ManagementToolsSection(
+                navController = navController,
+                onCardClick = onCardClick,
+                surfaceColor = surfaceColor,
+                primaryColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
         }
     }
 }
 
 @Composable
-fun LoadingStorageCard(
-    modifier: Modifier = Modifier,
-    cardColor: Color,
-    textColor: Color,
+private fun StorageSection(
+    isLoading: Boolean,
+    storageInfo: StorageInfo?,
+    usagePercentage: Float,
     storageColor: Color,
-    secondaryTextColor: Color,
+    primaryColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
     borderColor: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (isLoading) {
+            ModernLoadingStorageCard(
+                modifier = Modifier.fillMaxWidth(),
+                storageColor = storageColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                borderColor = borderColor
+            )
+        } else {
+            ModernStorageCard(
+                modifier = Modifier.fillMaxWidth(),
+                storageInfo = storageInfo ?: StorageInfo(),
+                usagePercentage = usagePercentage,
+                storageColor = storageColor,
+                primaryColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionsSection(
+    viewModel: MediaViewModel,
+    cleanableSize: String,
+    onCardClick: (String) -> Unit,
+    navController: NavController,
+    onTrashClick: () -> Unit,
+    surfaceColor: Color,
+    primaryColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    dangerColor: Color
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // Baris pertama: Bersihkan Media + Media Besar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val context = LocalContext.current
+            QuickActionCompactCard(
+                icon = Icons.Default.CleaningServices,
+                title = "Bersihkan",
+                subtitle = if (cleanableSize == "0 B") "Cache bersih" else "Hapus cache $cleanableSize",
+                surfaceColor = surfaceColor,
+                iconColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = { viewModel.performCacheCleanup(context) }, // Sekarang ini bakal bisa diakses!
+                modifier = Modifier.weight(1f)
+            )
+
+            QuickActionCompactCard(
+                icon = Icons.Default.Delete,
+                title = "Sampah",
+                subtitle = "Media buangan",
+                surfaceColor = surfaceColor,
+                iconColor = dangerColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = onTrashClick,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Baris kedua: Sampah + Media Duplikat
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            QuickActionCompactCard(
+                icon = Icons.Default.History, // Ganti iconnya biar keren!
+                title = "Riwayat Pencarian",
+                subtitle = "Lihat query lalu",
+                surfaceColor = surfaceColor,
+                iconColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = { navController.navigate("searchHistory") },
+                modifier = Modifier.weight(1f)
+            )
+
+            QuickActionCompactCard(
+                icon = Icons.Default.Style,
+                title = "Koleksi",
+                subtitle = "Album virtual",
+                surfaceColor = surfaceColor,
+                iconColor = primaryColor,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary,
+                onClick = { navController.navigate("collections") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionCompactCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    surfaceColor: Color,
+    iconColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
-            .border(
-                width = 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            ),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
+            .height(80.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = surfaceColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                iconColor.copy(alpha = 0.2f),
+                                iconColor.copy(alpha = 0.05f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = iconColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = textPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Text(
+                    text = subtitle,
+                    color = textSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManagementToolsSection(
+    navController: NavController,
+    onCardClick: (String) -> Unit,
+    surfaceColor: Color,
+    primaryColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModernMenuCard(
+                    icon = Icons.Default.VideoFile,
+                    title = "Berkas Video",
+                    subtitle = "Lihat video",
+                    surfaceColor = surfaceColor,
+                    iconColor = Color(0xff758194),
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = { navController.navigate("videoFiles") }
+                )
+                ModernMenuCard(
+                    icon = Icons.Default.FilePresent,
+                    title = "Media Besar",
+                    subtitle = "Grup ukuran",
+                    surfaceColor = surfaceColor,
+                    iconColor = Color(0xff758194),
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = { navController.navigate("largeSizeMedia") }
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModernMenuCard(
+                    icon = Icons.Default.Favorite,
+                    title = "Media Favorit",
+                    subtitle = "Koleksi pilihan",
+                    surfaceColor = surfaceColor,
+                    iconColor = Color(0xff758194),
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = { navController.navigate("favoriteMedia") }
+                )
+                ModernMenuCard(
+                    icon = Icons.Default.ContentCopy,
+                    title = "Media Duplikat",
+                    subtitle = "Lihat duplikat",
+                    surfaceColor = surfaceColor,
+                    iconColor = Color(0xff758194),
+                    textPrimary = textPrimary,
+                    textSecondary = textSecondary,
+                    onClick = { navController.navigate("duplicateMedia")  }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernLoadingStorageCard(
+    modifier: Modifier = Modifier,
+    storageColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    borderColor: Color
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = storageColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Penyimpanan Digunakan",
-                    color = storageColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Penyimpanan Digunakan",
+                color = textPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(20.dp)
                     .background(borderColor)
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.3f)
+                        .fillMaxWidth(0.4f)
                         .fillMaxHeight()
                         .background(
                             brush = Brush.horizontalGradient(
                                 colors = listOf(
-                                    borderColor.copy(alpha = 0.4f),
-                                    borderColor.copy(alpha = 0.7f),
-                                    borderColor.copy(alpha = 0.4f)
+                                    borderColor.copy(alpha = 0.3f),
+                                    borderColor.copy(alpha = 0.8f),
+                                    borderColor.copy(alpha = 0.3f)
                                 )
                             )
                         )
@@ -437,108 +500,70 @@ fun LoadingStorageCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
             Text(
                 text = "Menghitung ruang penyimpanan...",
-                color = secondaryTextColor,
+                color = textSecondary,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Divider(color = borderColor)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(25.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(borderColor, RoundedCornerShape(5.dp))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Media",
-                        color = textColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                LegendItem(
+                    color = borderColor,
+                    label = "Media",
+                    value = "—",
+                    textPrimary = textPrimary,
+                    modifier = Modifier.weight(1f)
+                )
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(borderColor, RoundedCornerShape(5.dp))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Lainnya",
-                        color = textColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                LegendItem(
+                    color = borderColor,
+                    label = "Lainnya",
+                    value = "—",
+                    textPrimary = textPrimary,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
 @Composable
-fun StorageUsageCard(
+private fun ModernStorageCard(
     modifier: Modifier = Modifier,
     storageInfo: StorageInfo,
     usagePercentage: Float,
     storageColor: Color,
-    textColor: Color,
-    secondaryTextColor: Color,
-    accentColor: Color,
-    borderColor: Color,
-    progressTrackColor: Color
+    primaryColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
 ) {
     val mediaPercentage = if (storageInfo.totalSpace > 0) {
         storageInfo.mediaSize.toFloat() / storageInfo.totalSpace.toFloat()
-    } else {
-        0f
-    }
+    } else 0f
 
     val otherPercentage = if (storageInfo.totalSpace > 0) {
         storageInfo.otherSize.toFloat() / storageInfo.totalSpace.toFloat()
-    } else {
-        0f
-    }
+    } else 0f
 
-    val otherStorageColor = Color(0xFF8E8E8E)
+    val otherColor = Color(0xFF94A3B8)
+    val trackColor = Color(0xFF334155).copy(alpha = 0.2f)
 
     Card(
-        modifier = modifier
-            .border(
-                width = 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            ),
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = storageColor),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -547,39 +572,33 @@ fun StorageUsageCard(
             ) {
                 Text(
                     text = "Penyimpanan Digunakan",
-                    color = textColor,
-                    fontSize = 14.sp,
+                    color = textPrimary,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )
 
                 Text(
                     text = "${(usagePercentage * 100).toInt()}%",
-                    color = accentColor,
-                    fontSize = 14.sp,
+                    color = primaryColor,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            MultiSegmentProgressBar(
+            ModernProgressBar(
                 segments = listOf(
-                    ProgressSegment(mediaPercentage, accentColor),
-                    ProgressSegment(otherPercentage, otherStorageColor),
-                    ProgressSegment(1f - mediaPercentage - otherPercentage, progressTrackColor)
+                    ProgressSegment(mediaPercentage, primaryColor),
+                    ProgressSegment(otherPercentage, otherColor)
                 ),
+                trackColor = trackColor,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(18.dp)
             )
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
                     text = "${formatSize(storageInfo.totalSpace - storageInfo.freeSpace)} dari ${
@@ -587,96 +606,63 @@ fun StorageUsageCard(
                             storageInfo.totalSpace
                         )
                     }",
-                    color = textColor,
+                    color = textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
 
                 Text(
                     text = "Sisa: ${formatSize(storageInfo.freeSpace)}",
-                    color = secondaryTextColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
+                    color = textSecondary,
+                    fontSize = 14.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Divider(color = borderColor)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(accentColor, RoundedCornerShape(5.dp))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Media",
-                        color = textColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatSize(storageInfo.mediaSize),
-                        color = secondaryTextColor,
-                        fontSize = 12.sp
-                    )
-                }
+                LegendItem(
+                    color = primaryColor,
+                    label = "Media",
+                    value = formatSize(storageInfo.mediaSize),
+                    textPrimary = textPrimary,
+                    modifier = Modifier.weight(1f)
+                )
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(otherStorageColor, RoundedCornerShape(5.dp))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Lainnya",
-                        color = textColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatSize(storageInfo.otherSize),
-                        color = secondaryTextColor,
-                        fontSize = 12.sp
-                    )
-                }
+                LegendItem(
+                    color = otherColor,
+                    label = "Lainnya",
+                    value = formatSize(storageInfo.otherSize),
+                    textPrimary = textPrimary,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
 @Composable
-fun MultiSegmentProgressBar(
+private fun ModernProgressBar(
     segments: List<ProgressSegment>,
+    trackColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .background(trackColor)
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasWidth = size.width
+            val canvasHeight = size.height
             var startX = 0f
 
             segments.forEach { segment ->
                 val segmentWidth = canvasWidth * segment.ratio
-                drawRect(
+                drawRoundRect(
                     color = segment.color,
                     topLeft = Offset(startX, 0f),
-                    size = Size(segmentWidth, size.height)
+                    size = Size(segmentWidth, canvasHeight),
                 )
                 startX += segmentWidth
             }
@@ -685,112 +671,95 @@ fun MultiSegmentProgressBar(
 }
 
 @Composable
-fun Divider(color: Color) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(color)
-    )
+private fun LegendItem(
+    color: Color,
+    label: String,
+    value: String,
+    textPrimary: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .background(color, RoundedCornerShape(6.dp))
+        )
+        Text(
+            text = "$label : $value",
+            color = textPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
 }
 
 @Composable
-fun ActionItem(
+private fun ModernMenuCard(
     icon: ImageVector,
     title: String,
-    subtitle: String? = null,
-    iconTint: Color,
-    textColor: Color,
-    secondaryTextColor: Color,
-    onClick: () -> Unit = {}
+    subtitle: String,
+    surfaceColor: Color,
+    iconColor: Color,
+    textPrimary: Color,
+    textSecondary: Color,
+    onClick: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(vertical = 4.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = surfaceColor),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = iconTint,
-            modifier = Modifier.size(24.dp)
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = iconColor,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
 
-        Spacer(modifier = Modifier.width(16.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = title,
+                    color = textPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = textColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = secondaryTextColor,
-                    fontSize = 12.sp
+                    color = textSecondary,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
                 )
             }
         }
     }
 }
 
-@Composable
-fun MenuCard(
-    icon: ImageVector,
-    title: String,
-    backgroundColor: Color,
-    iconTint: Color,
-    textColor: Color,
-    borderColor: Color,
-    onClick: () -> Unit = {}
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(2f)
-            .border(
-                width = 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Text(
-                text = title,
-                color = textColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
+// [Fungsi shimmerEffect(), getBasicStorageInfo(), getMediaSizeViaContentProvider(),
+//  getCachedStorageInfo(), cacheStorageInfo(), formatSize() tetap sama seperti sebelumnya]
 
 fun Modifier.shimmerEffect(): Modifier = composed {
     var transition by remember { mutableStateOf(false) }

@@ -1,12 +1,12 @@
 package com.sslythrrr.galeri.ml
-//Experimental
+
 import android.content.Context
 import com.google.gson.Gson
 import org.tensorflow.lite.Interpreter
-import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
 data class IntentMetadata(
@@ -32,17 +32,9 @@ class IntentOnnxProcessor(private val context: Context) {
         return try {
             println("🔧 Initializing TFLite Intent Processor...")
 
-            val modelFile = File(context.filesDir, "distilbert_intent.tflite")
-
-            val fileInputStream = FileInputStream(modelFile)
-            val fileChannel = fileInputStream.channel
-            val modelByteBuffer = fileChannel.map(
-                FileChannel.MapMode.READ_ONLY,
-                0,
-                modelFile.length()
-            )
-            interpreter = Interpreter(modelByteBuffer)
-            fileInputStream.close()
+            val modelByteBuffer = loadModelFileFromAssets("distilbert_intent.tflite")
+            val options = Interpreter.Options()
+            interpreter = Interpreter(modelByteBuffer, options)
 
             metadata = loadMetadata("model_metadata_intent.json")
             vocab = loadVocabulary()
@@ -53,6 +45,15 @@ class IntentOnnxProcessor(private val context: Context) {
             println("❌ Failed to initialize TFLite Intent: ${e.message}")
             false
         }
+    }
+
+    private fun loadModelFileFromAssets(modelFilename: String): MappedByteBuffer {
+        val assetFileDescriptor = context.assets.openFd(modelFilename)
+        val fileInputStream = FileInputStream(assetFileDescriptor.fileDescriptor)
+        val fileChannel = fileInputStream.channel
+        val startOffset = assetFileDescriptor.startOffset
+        val declaredLength = assetFileDescriptor.declaredLength
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
     }
 
     fun processQuery(query: String): IntentResult {
@@ -106,7 +107,6 @@ class IntentOnnxProcessor(private val context: Context) {
         val ids = LongArray(maxLen)
         val vocab = this.vocab ?: return ids
 
-        // CLS token
         ids[0] = (vocab["[CLS]"] ?: 101).toLong()
         var currentPos = 1
 
@@ -130,7 +130,6 @@ class IntentOnnxProcessor(private val context: Context) {
             }
         }
 
-        // SEP token
         if (currentPos < maxLen) {
             ids[currentPos] = (vocab["[SEP]"] ?: 102).toLong()
         }

@@ -1,5 +1,5 @@
 package com.sslythrrr.galeri.ml
-//Experimental
+
 import android.content.Context
 import com.google.gson.Gson
 import org.tensorflow.lite.Interpreter
@@ -7,6 +7,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
 data class NerMetadata(
@@ -33,22 +34,11 @@ class NerOnnxProcessor(private val context: Context) {
         return try {
             println("🔧 Initializing ONNX NER Processor...")
 
-            val modelFile = File(context.filesDir, "distilbert_ner.tflite")
+            val modelByteBuffer = loadModelFileFromAssets("distilbert_ner.tflite")
+            val options = Interpreter.Options()
+            interpreter = Interpreter(modelByteBuffer, options)
 
-            val fileInputStream = FileInputStream(modelFile)
-            val fileChannel = fileInputStream.channel
-            val modelByteBuffer = fileChannel.map(
-                FileChannel.MapMode.READ_ONLY,
-                0,
-                modelFile.length()
-            )
-            interpreter = Interpreter(modelByteBuffer)
-            fileInputStream.close()
-
-            // Load metadata
             metadata = loadMetadata("model_metadata_ner.json")
-
-            // Load vocabulary
             vocab = loadVocabulary()
 
             println("✅ ONNX NER Processor initialized successfully")
@@ -63,7 +53,15 @@ class NerOnnxProcessor(private val context: Context) {
         }
     }
 
-    // NEW: Tambahkan di fungsi processQuery untuk debugging
+    private fun loadModelFileFromAssets(modelFilename: String): MappedByteBuffer {
+        val assetFileDescriptor = context.assets.openFd(modelFilename)
+        val fileInputStream = FileInputStream(assetFileDescriptor.fileDescriptor)
+        val fileChannel = fileInputStream.channel
+        val startOffset = assetFileDescriptor.startOffset
+        val declaredLength = assetFileDescriptor.declaredLength
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+    }
+
     fun processQuery(query: String): NerResult {
         println("🔍 Processing query: '$query'")
         val tokens = tokenize(query)
@@ -123,7 +121,6 @@ class NerOnnxProcessor(private val context: Context) {
         val ids = LongArray(maxLen)
         val vocab = this.vocab ?: return ids
 
-        // CLS token
         ids[0] = (vocab["[CLS]"] ?: 101).toLong()
         var currentPos = 1
 
@@ -147,7 +144,6 @@ class NerOnnxProcessor(private val context: Context) {
             }
         }
 
-        // SEP token
         if (currentPos < maxLen) {
             ids[currentPos] = (vocab["[SEP]"] ?: 102).toLong()
         }
@@ -201,7 +197,6 @@ class NerOnnxProcessor(private val context: Context) {
         val interpreter = this.interpreter ?: return IntArray(0)
 
         try {
-            // Prepare input buffers
             val batchSize = 1
             val sequenceLength = inputIds.size
 
@@ -214,18 +209,15 @@ class NerOnnxProcessor(private val context: Context) {
             inputIdsBuffer.rewind()
             attentionMaskBuffer.rewind()
 
-            // Fill input buffers
             for (i in inputIds.indices) {
                 inputIdsBuffer.putInt(inputIds[i].toInt())
                 attentionMaskBuffer.putInt(attentionMask[i].toInt())
             }
 
-            // Prepare output buffer
             val numLabels = metadata?.label_list?.size ?: 9
             val outputBuffer = ByteBuffer.allocateDirect(4 * batchSize * sequenceLength * numLabels)
             outputBuffer.order(ByteOrder.nativeOrder())
 
-            // Run inference
             val inputMap = HashMap<Int, Any>()
             interpreter.getInputTensor(0)?.let {
                 val name = it.name()
@@ -238,30 +230,24 @@ class NerOnnxProcessor(private val context: Context) {
                 }
             }
 
-
             val outputs = mapOf(0 to outputBuffer)
 
             interpreter.runForMultipleInputsOutputs(arrayOf(inputMap[0]!!, inputMap[1]!!), outputs)
 
-
-            // Process output
             outputBuffer.rewind()
             val predictions = IntArray(sequenceLength)
             val logits = Array(sequenceLength) { FloatArray(numLabels) }
 
-// Ambil semua nilai dulu dari buffer
             for (i in 0 until sequenceLength) {
                 for (j in 0 until numLabels) {
                     logits[i][j] = outputBuffer.getFloat()
                 }
             }
 
-// Cari index dengan nilai tertinggi per token
             for (i in 0 until sequenceLength) {
                 val tokenLogits = logits[i]
                 predictions[i] = tokenLogits.indices.maxByOrNull { tokenLogits[it] } ?: 0
             }
-
 
             return predictions
 
@@ -280,9 +266,8 @@ class NerOnnxProcessor(private val context: Context) {
     private fun extractEntities(tokens: List<String>, labels: List<String>): Map<String, List<String>> {
         val entities = mutableMapOf<String, MutableList<String>>()
 
-        // Kita asumsikan posisi token diisi mulai dari label[1]
         for ((tokenIndex, token) in tokens.withIndex()) {
-            val labelIndex = tokenIndex + 1  // geser karena token ke-0 = token pertama, label ke-0 = [CLS]
+            val labelIndex = tokenIndex + 1
             if (labelIndex >= labels.size) continue
 
             val label = labels[labelIndex]
@@ -294,7 +279,6 @@ class NerOnnxProcessor(private val context: Context) {
 
         return entities
     }
-
 
     fun close() {
         interpreter?.close()
