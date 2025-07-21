@@ -33,17 +33,8 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
         return status?.status != "COMPLETED"
     }
 
-    private fun shouldSkipWork(): Boolean {
-        val status = scanStatusDao.getScanStatus(workerName)
-        return status?.status == "COMPLETED" && runAttemptCount == 0
-    }
-
     override suspend fun doWork(): Result {
         Log.d(tag, "🔥 Text Recognizer Worker dimulai!")
-        if (shouldSkipWork()) {
-            Log.d(tag, "⏭️ Pekerjaan sudah selesai sebelumnya, skip")
-            return Result.success()
-        }
 
         if (!canRetryWork() && runAttemptCount > 0) {
             Log.d(tag, "⏭️ Pekerjaan sudah selesai, tidak perlu retry")
@@ -56,7 +47,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
             Notification.showProgressNotification(
                 applicationContext,
                 notificationId,
-                "Text Recognition",
+                "Deteksi Teks",
                 "Memulai pengenalan teks...",
                 0,
                 100
@@ -85,7 +76,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
                     Notification.showProgressNotification(
                         applicationContext,
                         notificationId,
-                        "Text Recognition",
+                        "Pengenalan Teks",
                         "Melanjutkan pengenalan teks...",
                         existingStatus.processedItems * 100 / existingStatus.totalItems,
                         100
@@ -130,7 +121,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
                     Notification.updateProgressNotification(
                         applicationContext,
                         notificationId,
-                        "Text Recognition",
+                        "Pengenalan Teks",
                         "Memproses $actualProcessed dari ${pathsToProcess.size} gambar",
                         progressPercent,
                         100
@@ -152,7 +143,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Text Recognition Selesai",
+                    "Pengenalan Teks Selesai",
                     "${pathsToProcess.size} gambar telah diproses"
                 )
             }
@@ -166,7 +157,7 @@ class TextRecognizerWorker(context: Context, workerParams: WorkerParameters) :
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Text Recognition Gagal",
+                    "Pengenalan Teks Gagal",
                     "Terjadi kesalahan saat memproses gambar"
                 )
             }

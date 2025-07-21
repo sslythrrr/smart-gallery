@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        private const val USE_PREPOPULATED_DB = false// false utk prod
+        private const val USE_PREPOPULATED_DB = true// false utk prod
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -41,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
 
                 if (USE_PREPOPULATED_DB) {
-                    builder.createFromAsset("121309072025.db")
+                    builder.createFromAsset("20juli.db")
                 }
 
                 val instance = builder.fallbackToDestructiveMigration(false).build()

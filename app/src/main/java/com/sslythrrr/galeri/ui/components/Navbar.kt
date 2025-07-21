@@ -53,7 +53,7 @@ fun BottomNavigationBar(
         ) {
             TextOnlyNavItem(
                 selected = currentPage == 0,
-                label = "Chatbot",
+                label = "Pencarian",
                 onClick = { onPageSelected(0) },
                 isDarkTheme = isDarkTheme
             )

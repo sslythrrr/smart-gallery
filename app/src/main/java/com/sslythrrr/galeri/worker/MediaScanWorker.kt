@@ -13,6 +13,7 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.sslythrrr.galeri.Constants
 import com.sslythrrr.galeri.data.AppDatabase
 import com.sslythrrr.galeri.data.entity.ScannedImage
 import com.sslythrrr.galeri.ui.utils.Notification
@@ -30,9 +31,9 @@ class MediaScanWorker(
     val context: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(context, workerParams) {
-    private val tag = "MediaScanWorker"
+    private val tag = "Deteksi Gambar"
     private val imageDao = AppDatabase.getInstance(context).scannedImageDao()
-    private val batchSize = 100
+    private val batchSize = 20
     private val notificationId = Notification.MEDIA_SCAN_NOTIFICATION_ID
 
     private data class MediaInfo(
@@ -135,10 +136,11 @@ class MediaScanWorker(
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Images.Media.MIME_TYPE
         )
-
+        val selection = MediaStore.Images.Media.DATA + " LIKE ?"
+        val selectionArgs = arrayOf("%${Constants.TARGET_DIRECTORY}%")
         contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            projection, selection, selectionArgs, "${MediaStore.Images.Media.DATE_ADDED} DESC"
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -197,9 +199,11 @@ class MediaScanWorker(
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Video.Media.MIME_TYPE
         )
+        val selection = MediaStore.Images.Media.DATA + " LIKE ?"
+       val selectionArgs = arrayOf("%${Constants.TARGET_DIRECTORY}%")
         contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC"
+            projection, selection, selectionArgs, "${MediaStore.Video.Media.DATE_ADDED} DESC"
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)

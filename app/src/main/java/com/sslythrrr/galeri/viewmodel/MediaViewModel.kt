@@ -64,11 +64,16 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
+import com.sslythrrr.galeri.ui.paging.StaticListPagingSource
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import kotlin.use
 import com.sslythrrr.galeri.ui.utils.CacheManager
 import com.sslythrrr.galeri.ui.screens.mainscreen.formatSize
+import com.sslythrrr.galeri.worker.TextRecognizerWorker
+import android.app.PendingIntent
+import android.os.Build
+import android.util.Size
 
 class MediaViewModel(application: Application) : AndroidViewModel(application) {
     // UI
@@ -142,6 +147,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _collections = MutableStateFlow<List<String>>(emptyList())
     val collections: StateFlow<List<String>> = _collections.asStateFlow()
+    private val _navigateToPage = MutableSharedFlow<Int>()
 
     fun deleteCollection(context: Context, collectionName: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -158,6 +164,22 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             loadCollections(context)
+        }
+    }
+
+    fun createDeleteRequestIntent(context: Context, mediaList: List<Media>): PendingIntent? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val uris = mediaList.map { it.uri }
+            return MediaStore.createDeleteRequest(context.contentResolver, uris)
+        }
+        return null
+    }
+
+    fun removeMediaEntriesFromDatabase(mediaList: List<Media>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = AppDatabase.getInstance(getApplication()).scannedImageDao()
+            val urisToDelete = mediaList.map { it.uri.toString() }
+            dao.deletePermanentlyByUri(urisToDelete)
         }
     }
 
@@ -224,7 +246,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             pagingSourceFactory = { dao.getMediaForCollectionPagingSource(collectionTag) }
         ).flow.map { pagingDataScannedImage: PagingData<ScannedImage> ->
             pagingDataScannedImage.map { scannedImage ->
-                UiModel.MediaItem(scannedImage.toMedia()) as UiModel // <-- CUMA TAMBAH INI!
+                UiModel.MediaItem(scannedImage.toMedia()) as UiModel
             }
         }.cachedIn(viewModelScope)
 
@@ -311,7 +333,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun selectAllFavorites(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val dao = AppDatabase.getInstance(context).scannedImageDao()
-            // Ambil semua media yang difavoritkan langsung dari DB
             val allFavorites = dao.getAllFavorites().map { it.toMedia() }
             withContext(Dispatchers.Main) {
                 _selectedMedia.value = allFavorites.toSet()
@@ -364,15 +385,11 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun restoreMediaFromTrash(mediaList: List<Media>, context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
+    suspend fun restoreMediaFromTrash(mediaList: List<Media>, context: Context) {
+        withContext(Dispatchers.IO) {
             val dao = AppDatabase.getInstance(context).scannedImageDao()
             val uris = mediaList.map { it.uri.toString() }
             dao.updateTrashedStatus(uris, false, null)
-            loadAlbums(context)
-            withContext(Dispatchers.Main) {
-                _refreshTrigger.value++
-            }
         }
     }
 
@@ -399,25 +416,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteMediaPermanently(context: Context, mediaList: List<Media>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val dao = AppDatabase.getInstance(context).scannedImageDao()
-            val urisToDelete = mediaList.map { it.uri.toString() }
-
-            // Hapus dari ContentResolver (file fisik)
-            mediaList.forEach { media ->
-                try {
-                    context.contentResolver.delete(media.uri, null, null)
-                } catch (e: Exception) {
-                    Log.e("ViewModel", "Gagal menghapus file fisik: ${media.uri}", e)
-                }
-            }
-            dao.deletePermanentlyByUri(urisToDelete)
-            loadAlbums(context)
-            withContext(Dispatchers.Main) {
-                _refreshTrigger.value++
-            }
+    fun deleteMediaPermanently(context: Context, mediaList: List<Media>): PendingIntent? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val uris = mediaList.map { it.uri }
+            return MediaStore.createDeleteRequest(context.contentResolver, uris)
         }
+        return null
     }
 
     fun refreshAllData(context: Context) {
@@ -432,6 +436,19 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 _isRefreshing.value = false
             }
         }
+    }
+
+    fun setMediaPagerFromList(mediaList: List<Media>) {
+        val pagerFlow = Pager(
+            config = PagingConfig(pageSize = 60),
+            pagingSourceFactory = { StaticListPagingSource(mediaList) }
+        ).flow.map { pagingData: PagingData<Media> ->
+            pagingData.map { media: Media ->
+                UiModel.MediaItem(media) as UiModel
+            }
+        }.cachedIn(viewModelScope)
+
+        _mediaPager.value = pagerFlow
     }
 
     companion object {
@@ -472,7 +489,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         sortOrder: String = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
     ): List<Media> {
         val mediaList = mutableListOf<Media>()
-
+        val selection = MediaStore.Images.Media.DATA + " LIKE ?"
+        val selectionArgs = arrayOf("%${com.sslythrrr.galeri.Constants.TARGET_DIRECTORY}%")
         context.contentResolver
             .query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -493,7 +511,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         sortOrder: String = "${MediaStore.Video.Media.DATE_TAKEN} DESC"
     ): List<Media> {
         val mediaList = mutableListOf<Media>()
-
+        val selection = MediaStore.Images.Media.DATA + " LIKE ?"
+        val selectionArgs = arrayOf("%${com.sslythrrr.galeri.Constants.TARGET_DIRECTORY}%")
         context.contentResolver
             .query(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -648,8 +667,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Helper Functions (dipindah dari MediaScanWorker) ---
-
     private fun getLatLongFromExif(context: Context, uri: Uri): Pair<Double, Double>? {
         return try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -657,7 +674,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 exif.latLong?.let { Pair(it[0], it[1]) }
             }
         } catch (_: Exception) {
-            // Log.e("EXIF_VM", "Gagal ambil lokasi EXIF dari $uri", e)
             null
         }
     }
@@ -684,19 +700,24 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         if (file.exists() && file.length() > 0) return@withContext file.absolutePath
 
         try {
-            MediaMetadataRetriever().use { retriever ->
-                retriever.setDataSource(context, videoUri)
-                retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { bitmap ->
-                    FileOutputStream(file).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
-                    }
-                    if (file.exists() && file.length() > 0) file.absolutePath else null
-                }
+            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                context.contentResolver.loadThumbnail(videoUri, Size(256, 256), null)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaStore.Video.Thumbnails.getThumbnail(context.contentResolver, mediaId, MediaStore.Video.Thumbnails.MINI_KIND, null)
             }
-        } catch (_: Exception) {
-            // Log.e("ThumbnailFactory_VM", "Error saat buat thumbnail: $videoUri", e)
-            null
+
+            bitmap?.let {
+                FileOutputStream(file).use { out ->
+                    it.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                }
+                it.recycle()
+                return@withContext file.absolutePath
+            }
+        } catch (e: Exception) {
+            Log.e("ThumbnailFactory", "Gagal membuat thumbnail untuk $videoUri", e)
         }
+        return@withContext null
     }
 
     fun performInitialScan(context: Context) {
@@ -711,6 +732,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             if (mediaToScan.isEmpty()) {
                 markInitialScanCompleted(context)
                 _isInitialScanComplete.value = true
+                startLocationWorker(context, showNotification = true)
                 return@launch
             }
 
@@ -762,6 +784,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
             markInitialScanCompleted(context)
             _isInitialScanComplete.value = true
+            startLocationWorker(context, showNotification = true)
         }
     }
 
@@ -805,12 +828,14 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         mediaObserver =
             object : ContentObserver(handler) {
                 override fun onChange(selfChange: Boolean) {
+                    startScanning(context)
                     loadMedia(context)
                 }
             }
         videoObserver =
             object : ContentObserver(handler) {
                 override fun onChange(selfChange: Boolean) {
+                    startScanning(context)
                     loadMedia(context)
                 }
             }
@@ -880,7 +905,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Tambahkan dua fungsi helper ini di dalam MediaViewModel
     private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
         return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
                 cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
@@ -912,7 +936,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadAlbums(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Ambil semua media yang tidak di sampah langsung dari database.
                 val allMedia = AppDatabase.getInstance(context).scannedImageDao()
                     .getAllNonTrashedMedia().map { it.toMedia() }
 
@@ -921,15 +944,11 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // Kelompokkan semua media berdasarkan nama album.
                 val albumsMap = allMedia
                     .groupBy { it.albumName ?: "Unknown" }
                     .mapNotNull { (albumName, mediaInAlbum) ->
-                        // Cari media terbaru di dalam album ini untuk dijadikan cover.
                         val latestMedia = mediaInAlbum.maxByOrNull { it.dateTaken }
                         if (latestMedia != null) {
-                            // Tentukan URI untuk thumbnail. Jika ini video dan punya thumbnailPath,
-                            // gunakan itu. Jika tidak, gunakan URI asli.
                             val coverUri = if (latestMedia.type == MediaType.VIDEO && !latestMedia.thumbnailPath.isNullOrEmpty()) {
                                 File(latestMedia.thumbnailPath).toUri()
                             } else {
@@ -941,7 +960,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                                 name = albumName,
                                 uri = coverUri,
                                 mediaCount = mediaInAlbum.size,
-                                type = latestMedia.type, // Simpan tipe media cover
+                                type = latestMedia.type,
                                 latestMediaDate = latestMedia.dateTaken
                             )
                         } else {
@@ -957,7 +976,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                     name = "Semua Media",
                     uri = latestAlbumForMaster?.uri ?: Uri.EMPTY,
                     mediaCount = totalCount,
-                    type = MediaType.IMAGE, // Album "Semua" bisa kita set default ke IMAGE
+                    type = MediaType.IMAGE,
                     latestMediaDate = latestAlbumForMaster?.latestMediaDate ?: 0L
                 )
 
@@ -1090,7 +1109,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val objectDao = AppDatabase.getInstance(context).detectedObjectDao()
                 val imagesFromDb = objectDao.getImagesWithLabel(label)
 
-                // Konversi dari ScannedImage ke Media
                 val mediaList = imagesFromDb.map { scannedImage ->
                     Media(
                         id = scannedImage.uri.hashCode().toLong(),
@@ -1100,13 +1118,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                         albumId = scannedImage.album.hashCode().toLong(),
                         albumName = scannedImage.album,
                         dateTaken = scannedImage.tanggal,
-                        dateAdded = scannedImage.tanggal, // Bisa disamakan
+                        dateAdded = scannedImage.tanggal,
                         size = scannedImage.ukuran,
                         relativePath = scannedImage.path,
                         thumbnailPath = scannedImage.thumbnailPath
                     )
                 }
-                // Langsung update pagedMedia agar bisa ditampilkan oleh MediaGrid
                 _pagedMedia.value = mediaList
 
             } catch (e: Exception) {
@@ -1118,8 +1135,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun startScanning(context: Context) {
         val workManager = WorkManager.getInstance(context)
 
-        // BAGIAN 1: PEMINDAIAN AWAL & PENUH
-        // Pekerjaan ini berjalan sekali untuk memastikan semua media terindeks.
         val initialScanConstraints =
             Constraints.Builder()
                 .setRequiresDeviceIdle(false)
@@ -1182,37 +1197,40 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         val reactiveMediaScanWork = OneTimeWorkRequestBuilder<MediaScanWorker>()
             .setConstraints(reactiveConstraints)
             .addTag("reactive_media_scan")
-            .setInputData(workDataOf("needs_notification" to false)) // Tidak perlu notif untuk scan reaktif
+            .setInputData(workDataOf("needs_notification" to true))
             .build()
 
         val reactiveLocationWork = OneTimeWorkRequestBuilder<LocationWorker>()
-            .setInputData(workDataOf("needs_notification" to false))
+            .setInputData(workDataOf("needs_notification" to true))
             .build()
 
         val reactiveObjectDetectionWork = OneTimeWorkRequestBuilder<ObjectDetectorWorker>()
-            .setInputData(workDataOf("needs_notification" to false))
+            .setInputData(workDataOf("needs_notification" to true))
             .build()
 
-// Jika kamu mau text recognizer juga aktif, uncomment ini
-        /*
         val reactiveTextRecognitionWork = OneTimeWorkRequestBuilder<TextRecognizerWorker>()
-            .setInputData(workDataOf("needs_notification" to false))
+            .setInputData(workDataOf("needs_notification" to true))
             .build()
-        */
-
-// Rangkai semua pekerjaan menjadi satu alur kerja
         workManager
             .beginUniqueWork(
-                "reactive_full_scan", // Nama unik untuk alur kerja reaktif
-                ExistingWorkPolicy.APPEND_OR_REPLACE, // Ganti ke APPEND_OR_REPLACE
+                "reactive_full_scan",
+                //ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ExistingWorkPolicy.REPLACE,
                 reactiveMediaScanWork
             )
             .then(reactiveLocationWork)
             .then(reactiveObjectDetectionWork)
-            // .then(reactiveTextRecognitionWork) // Uncomment jika diperlukan
+            .then(reactiveTextRecognitionWork)
             .enqueue()
     }
-
+    fun selectingMedia(mediaList: List<Media>) {
+        _selectedMedia.update { currentSelection ->
+            currentSelection + mediaList
+        }
+        if (_selectedMedia.value.isNotEmpty()) {
+            _isSelectionMode.value = true
+        }
+    }
     fun startObjectDetection(context: Context) {
         val workManager = WorkManager.getInstance(context)
         val objectDetectionWork = OneTimeWorkRequestBuilder<ObjectDetectorWorker>()
@@ -1225,7 +1243,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    /*
     fun startTextRecognition(context: Context) {
         val workManager = WorkManager.getInstance(context)
         val textRecognitionWork = OneTimeWorkRequestBuilder<TextRecognizerWorker>()
@@ -1237,7 +1254,21 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             textRecognitionWork
         )
     }
-*/
+
+    fun startLocationWorker(context: Context, showNotification: Boolean = false) {
+        val workManager = WorkManager.getInstance(context)
+        val work = OneTimeWorkRequestBuilder<LocationWorker>()
+            .setInputData(workDataOf("needs_notification" to showNotification))
+            .addTag("location_worker")
+            .build()
+
+        workManager.enqueueUniqueWork(
+            "location_worker_unique",
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            work
+        )
+    }
+
 
     fun checkAiWorkerStatus(context: Context) {
         viewModelScope.launch {
@@ -1278,6 +1309,45 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         _mediaPager.value = pager
     }
 
+    fun syncDatabaseWithMediaStore(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = AppDatabase.getInstance(context).scannedImageDao()
+
+            val urisInDb = dao.getAllScannedUris().toSet()
+            if (urisInDb.isEmpty()) return@launch
+
+            val urisOnDevice = mutableSetOf<String>()
+            val projection = arrayOf(MediaStore.MediaColumns._ID)
+            val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+
+            context.contentResolver.query(imageUri, projection, null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    urisOnDevice.add(ContentUris.withAppendedId(imageUri, id).toString())
+                }
+            }
+            context.contentResolver.query(videoUri, projection, null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    urisOnDevice.add(ContentUris.withAppendedId(videoUri, id).toString())
+                }
+            }
+
+            val ghostUris = urisInDb.subtract(urisOnDevice).toList()
+
+            if (ghostUris.isNotEmpty()) {
+                Log.d("SyncDB", "Menghapus ${ghostUris.size} media hantu.")
+                dao.deletePermanentlyByUri(ghostUris)
+
+                withContext(Dispatchers.Main) {
+                    _refreshTrigger.value++
+                }
+            } else {
+                Log.d("SyncDB", "Database sudah sinkron.")
+            }
+        }
+    }
 
     override fun onCleared() {
         super.onCleared()

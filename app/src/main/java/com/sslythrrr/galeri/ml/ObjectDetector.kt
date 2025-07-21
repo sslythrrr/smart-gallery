@@ -16,11 +16,11 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
 class ObjectDetector(private val context: Context) {
-    private val tag = "ObjectDetector_Final"
-    private val modelFilename = "mobilenetv3_multilabel.tflite"
-    private val vocabFilename = "vocab.json"
+    private val tag = "ObjectDetector"
+    private val modelFilename = "14juli25.tflite"
+    private val vocabFilename = "14juli25.json"
     private val inputSize = 224
-    private val confidenceThreshold = 0.05f
+    private val confidenceThreshold = 0.8f
 
     private lateinit var tflite: Interpreter
     private var isInitialized = false

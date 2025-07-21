@@ -77,6 +77,15 @@ import com.sslythrrr.galeri.viewmodel.UiModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import com.sslythrrr.galeri.ui.components.AddToCollectionDialog
 
 @Composable
 fun DuplicateMediaScreen(
@@ -96,6 +105,52 @@ fun DuplicateMediaScreen(
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMedia by viewModel.selectedMedia.collectAsState()
+
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showCollectionDialog by remember { mutableStateOf(false) }
+    val collections by viewModel.collections.collectAsState()
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Pindahkan ke Sampah?") },
+            text = { Text("Item ini akan dihapus permanen setelah 7 hari.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.moveMediaToTrash(selectedMedia.toList(), context) {}
+                        showDeleteConfirmation = false
+                        viewModel.clearSelection()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Ya, Pindahkan")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteConfirmation = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+
+    if (showCollectionDialog) {
+        AddToCollectionDialog(
+            collections = collections,
+            onDismiss = { showCollectionDialog = false },
+            onCollectionSelected = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            },
+            onNewCollection = { collectionName ->
+                viewModel.addMediaToCollection(context, selectedMedia.toList(), collectionName)
+                viewModel.clearSelection()
+                showCollectionDialog = false
+            }
+        )
+    }
 
     val handleMediaLongClick: (Media) -> Unit = { media ->
         if (!isSelectionMode) {
@@ -123,10 +178,6 @@ fun DuplicateMediaScreen(
         context.startActivity(Intent.createChooser(shareIntent, "Bagikan ke"))
     }
 
-    val confirmDelete = {
-        // Implementasi dialog konfirmasi hapus media
-    }
-
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
     }
@@ -143,13 +194,14 @@ fun DuplicateMediaScreen(
                 if (inSelectionMode) {
                     SelectionTopBar(
                         selectedCount = selectedMedia.size,
-                        onSelectAll = { viewModel.selectMedia(context) },
+                        onSelectAll = { viewModel.selectingMedia(duplicateMediaList) },
                         onClearSelection = { viewModel.clearSelection() },
-                        onDelete = confirmDelete,
+                        onDelete = { showDeleteConfirmation = true },
                         onShare = shareSelectedMedia,
                         isDarkTheme = isDarkTheme,
                         onAddToCollection = {
                             viewModel.loadCollections(context)
+                            showCollectionDialog = true
                         }
                     )
                 } else {
@@ -160,19 +212,12 @@ fun DuplicateMediaScreen(
                         ),
                         windowInsets = WindowInsets(0),
                         title = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Text(
-                                    "Media Duplikat",
-                                    color = if (isDarkTheme) TextWhite else TextBlack,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
+                            Text(
+                                "Media Duplikat",
+                                color = if (isDarkTheme) TextWhite else TextBlack,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
@@ -203,9 +248,7 @@ fun DuplicateMediaScreen(
                     Text("Tidak ada media duplikat ditemukan")
                 }
             } else {
-                // Kelompokkan list menjadi sections duplikat
-                val sections = duplicateSection(duplicateMediaList) // Panggil fungsi baru
-                // Gunakan MediaGridLegacy yang menerima List<SectionItem>
+                val sections = duplicateSection(duplicateMediaList)
                 MediaGridLegacy(
                     sections = sections,
                     onMediaClick = handleMediaClick,

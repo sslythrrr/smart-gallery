@@ -18,7 +18,5 @@ data class DetectedText(
     @ColumnInfo(name = "id") val id: Long = 0,
     @ColumnInfo(name = "uri") val uri: String,
     @ColumnInfo(name = "text") val text: String,
-    @ColumnInfo(name = "type") val type: String,
-    @ColumnInfo(name = "confidence") val confidence: Float,
-    @ColumnInfo(name = "bounding_box") val boundingBox: String?
+    @ColumnInfo(name = "confidence") val confidence: Float
 )

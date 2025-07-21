@@ -97,6 +97,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         if (PermissionUtils.hasRequiredPermissions(this)) {
             viewModel.registerContentObservers(this)
+            viewModel.syncDatabaseWithMediaStore(this)
             viewModel.startScanning(this)
         }
     }

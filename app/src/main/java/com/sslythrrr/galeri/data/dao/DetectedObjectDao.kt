@@ -26,25 +26,29 @@ interface DetectedObjectDao {
     @Query("SELECT DISTINCT uri FROM deteksi_label")
     fun getAllProcessedPaths(): List<String>
 
-    @Query("SELECT * FROM deteksi_gambar " +
-            "JOIN deteksi_label " +
-            "ON deteksi_label.uri = deteksi_gambar.uri " +
-            "WHERE label LIKE '%' || :label || '%'")
+    @Query("""
+        SELECT * FROM deteksi_gambar
+            JOIN deteksi_label
+            ON deteksi_label.uri = deteksi_gambar.uri
+            WHERE label LIKE '%' || :label || '%'
+            AND is_deleted = 0""")
     fun getImagesByLabel(label: String): List<ScannedImage>
 
     @Query("""
-        SELECT label, COUNT(uri) as count FROM deteksi_label
-        WHERE confidence >= :confidenceThreshold
-        GROUP BY label
+        SELECT  o.label, COUNT(o.uri) as count FROM deteksi_label o
+        Join deteksi_gambar  s ON s.uri = o.uri
+        WHERE  o.confidence >= :confidenceThreshold
+        AND s.is_deleted = 0
+        GROUP BY o.label
         ORDER BY count DESC
     """)
-    suspend fun getTopLabels(confidenceThreshold: Float = 0.4f): List<LabelCount>
+    suspend fun getTopLabels(confidenceThreshold: Float = 0.8f): List<LabelCount>
 
     @Query("""
         SELECT s.* FROM deteksi_gambar s
         INNER JOIN deteksi_label o ON s.uri = o.uri
-        WHERE o.label = :label AND o.confidence >= :confidenceThreshold
+        WHERE o.label = :label AND o.confidence AND s.is_deleted = 0 >= :confidenceThreshold
         ORDER BY s.tanggal DESC
     """)
-    suspend fun getImagesWithLabel(label: String, confidenceThreshold: Float = 0.4f): List<ScannedImage>
+    suspend fun getImagesWithLabel(label: String, confidenceThreshold: Float = 0.8f): List<ScannedImage>
 }

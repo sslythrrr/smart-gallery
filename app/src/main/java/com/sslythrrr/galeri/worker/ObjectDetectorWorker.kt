@@ -18,19 +18,14 @@ import kotlinx.coroutines.coroutineScope
 
 class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
-    private val tag = "ObjectDetectorWorker"
+    private val tag = "Deteksi Label"
     private val notificationId = Notification.OBJECT_DETECTOR_NOTIFICATION_ID
     private val imageDao = AppDatabase.getInstance(context).scannedImageDao()
     private val objectDao = AppDatabase.getInstance(context).detectedObjectDao()
     private val scanStatusDao = AppDatabase.getInstance(context).scanStatusDao()
     private val objectDetector = ObjectDetector(context)
-    private val batchSize = 50
+    private val batchSize = 20
     private val workerName = "OBJECT_DETECTOR"
-
-    private fun shouldSkipWork(): Boolean {
-        val status = scanStatusDao.getScanStatus(workerName)
-        return status?.status == "COMPLETED"
-    }
 
     private fun getCurrentProgress(): Pair<Int, Int> {
         val status = scanStatusDao.getScanStatus(workerName)
@@ -43,11 +38,6 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         Log.d(tag, "🔥 Object Detector Worker dimulai! (Attempt: $runAttemptCount)")
-
-        if (shouldSkipWork()) {
-            Log.d(tag, "⏭️ Pekerjaan sudah selesai sebelumnya, skip")
-            return Result.success()
-        }
 
         val needsNotification = inputData.getBoolean("needs_notification", false)
         if (needsNotification) {
@@ -123,7 +113,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                     Notification.updateProgressNotification(
                         applicationContext,
                         notificationId,
-                        "Object Detection",
+                        "Deteksi Label",
                         "Memproses $totalProcessed dari ${scannedPaths.size} gambar",
                         progressPercent,
                         100
@@ -137,7 +127,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Object Detection Selesai",
+                    "Deteksi Label Selesai",
                     "${pathsToProcess.size} gambar telah diproses"
                 )
             }
@@ -151,7 +141,7 @@ class ObjectDetectorWorker(context: Context, workerParams: WorkerParameters) :
                 Notification.finishNotification(
                     applicationContext,
                     notificationId,
-                    "Object Detection Gagal",
+                    "Deteksi Label Gagal",
                     "Terjadi kesalahan saat memproses gambar"
                 )
             }

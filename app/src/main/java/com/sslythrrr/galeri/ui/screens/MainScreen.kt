@@ -100,6 +100,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainScreen(
     context: Context,
+    initialPage: Int,
     onAlbumClick: (Album) -> Unit,
     viewModel: MediaViewModel,
     isDarkTheme: Boolean,
@@ -113,7 +114,7 @@ fun MainScreen(
     onContactClick: () -> Unit,
     onTrashClick: () -> Unit = {}
 ) {
-    val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = 1)
+    val pagerState = rememberPagerState(pageCount = { 3 }, initialPage = initialPage)
 
     val pagerFlow by viewModel.mediaPager.collectAsState()
     val lazyPagingItems = pagerFlow?.collectAsLazyPagingItems()
@@ -160,21 +161,19 @@ fun MainScreen(
     var showCollectionDialog by remember { mutableStateOf(false) }
     val collections by viewModel.collections.collectAsState()
 
-// LaunchedEffect ini hanya untuk memicu dialog pertama kali
     LaunchedEffect(showPrompts) {
         if (showPrompts) {
-            delay(1000) // Jeda agar tidak mendadak
+            delay(1000)
             showObjectDialog = true
-            viewModel.aiPromptsShown() // Tandai bahwa sinyal sudah diterima
+            viewModel.aiPromptsShown()
         }
     }
 
-// Dialog untuk Object Detector
     if (showObjectDialog) {
         AlertDialog(
             onDismissRequest = {
                 showObjectDialog = false
-                showTextDialog = true // Lanjut ke dialog kedua
+                showTextDialog = true
             },
             title = { Text("Deteksi Label") },
             text = { Text("Izinkan aplikasi mendeteksi label gambar Anda. Proses ini akan berjalan di latar belakang.") },
@@ -193,26 +192,24 @@ fun MainScreen(
             }
         )
     }
-
-/*
-    if (showTextDialog) {
-        AlertDialog(
-            onDismissRequest = { showTextDialog = false },
-            title = { Text("Analisis Teks (AI)") },
-            text = { Text("Izinkan aplikasi membaca teks di dalam foto Anda (misal: dari screenshot, poster)? Proses ini juga berjalan di latar belakang.") },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.startTextRecognition(context)
-                    showTextDialog = false
-                }) { Text("Izinkan") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTextDialog = false
-                }) { Text("Lain Kali") }
-            }
-        )
-    }*/
+        if (showTextDialog) {
+            AlertDialog(
+                onDismissRequest = { showTextDialog = false },
+                title = { Text("Deteksi Teks") },
+                text = { Text("Izinkan aplikasi membaca teks dalam gambar Anda. Proses ini akan berjalan di latar belakang.") },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.startTextRecognition(context)
+                        showTextDialog = false
+                    }) { Text("Izinkan") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showTextDialog = false
+                    }) { Text("Lain Kali") }
+                }
+            )
+        }
 
     val shareSelectedMedia = {
         val uris = selectedMedia.map { it.uri }.toList()
@@ -386,37 +383,37 @@ fun MainScreen(
                                             },
                                             isDarkTheme = isDarkTheme
                                         )
-                                    if (showAiMenu) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(1.dp)
-                                                .padding(horizontal = 16.dp)
-                                                .background(
-                                                    if (isDarkTheme) TextGray.copy(alpha = 0.2f) else TextGrayDark.copy(
-                                                        alpha = 0.1f
+                                        if (showAiMenu) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(1.dp)
+                                                    .padding(horizontal = 16.dp)
+                                                    .background(
+                                                        if (isDarkTheme) TextGray.copy(alpha = 0.2f) else TextGrayDark.copy(
+                                                            alpha = 0.1f
+                                                        )
                                                     )
-                                                )
-                                        )
-                                        DropdownClickableItem(
-                                            icon = Icons.Default.AutoAwesome,
-                                            title = "Mulai Analisis",
-                                            subtitle = "Jalankan model deteksi",
-                                            onClick = {
-                                                viewModel.startObjectDetection(context)
-                                                //viewModel.startTextRecognition(context)
-                                                viewModel.checkAiWorkerStatus(context)
-                                                dropdownExpanded = false
-                                            },
-                                            isDarkTheme = isDarkTheme
-                                        )
-                                    }
+                                            )
+                                            DropdownClickableItem(
+                                                icon = Icons.Default.AutoAwesome,
+                                                title = "Mulai Deteksi",
+                                                subtitle = "Jalankan model deteksi",
+                                                onClick = {
+                                                    viewModel.startObjectDetection(context)
+                                                    viewModel.startTextRecognition(context)
+                                                    viewModel.checkAiWorkerStatus(context)
+                                                    dropdownExpanded = false
+                                                },
+                                                isDarkTheme = isDarkTheme
+                                            )
+                                        }
                                     }
                                     if (pagerState.currentPage == 0) {
                                         DropdownClickableItem(
                                             icon = Icons.Filled.Delete,
                                             title = "Hapus Pesan",
-                                            subtitle = "Bersihkan layar chatbot",
+                                            subtitle = "Bersihkan layar",
                                             onClick = {
                                                 showCbDeleteConfirmation = true
                                             },
@@ -755,7 +752,7 @@ fun DropdownClickableItem(
 }
 
 private fun topbarTitle(page: Int): String = when (page) {
-    0 -> "CHATBOT"
+    0 -> "PENCARIAN"
     1 -> "GALERI"
     2 -> "KELOLA"
     else -> ""

@@ -23,6 +23,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -34,7 +39,6 @@ fun TrashScreen(
     val context = LocalContext.current
     val pagerFlow by viewModel.mediaPager.collectAsState()
     val lazyPagingItems = pagerFlow?.collectAsLazyPagingItems()
-
     // State untuk memunculkan BottomSheet dan item yang dipilih
     var selectedMediaForAction by remember { mutableStateOf<Media?>(null) }
     val scope = rememberCoroutineScope()
@@ -43,20 +47,44 @@ fun TrashScreen(
     // State untuk dialog konfirmasi hapus permanen
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    val deleteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Jika file fisik berhasil dihapus...
+            selectedMediaForAction?.let { mediaYangBaruSajaDihapus ->
+                // ...baru kita hapus datanya dari database kita.
+                viewModel.removeMediaEntriesFromDatabase(listOf(mediaYangBaruSajaDihapus))
+            }
+
+            // Refresh tampilan setelah semuanya beres.
+            scope.launch {
+                delay(300) // Kasih jeda sedikit biar database-nya selesai update
+                lazyPagingItems?.refresh()
+
+                // PENTING: "Bakar alamat" atau bersihkan state di paling akhir!
+                selectedMediaForAction = null
+            }
+        } else {
+            // Jika pengguna membatalkan dialog sistem, bersihkan state juga
+            selectedMediaForAction = null
+        }
+    }
     // Memuat data sampah saat layar pertama kali dibuka
     LaunchedEffect(Unit) {
         viewModel.loadTrashedMedia(context)
     }
 
     val onRestoreClick: (Media) -> Unit = { media ->
-        scope.launch { sheetState.hide() }.invokeOnCompletion {
+        scope.launch {
+            sheetState.hide()
             viewModel.restoreMediaFromTrash(listOf(media), context)
-            // JANGAN panggil loadMedia. Cukup refresh Pager yang ada.
-            lazyPagingItems?.refresh()
+            lazyPagingItems?.refresh() // Refresh setelah proses selesai
             selectedMediaForAction = null
         }
     }
 
+// Untuk onDeletePermanentClick
     val onDeletePermanentClick: (Media) -> Unit = {
         scope.launch { sheetState.hide() }.invokeOnCompletion {
             showDeleteConfirmDialog = true
@@ -93,16 +121,21 @@ fun TrashScreen(
                 selectedMediaForAction = null
             },
             title = { Text("Hapus Permanen?") },
-            text = { Text("Tindakan ini tidak dapat diurungkan. Media akan dihapus selamanya dari perangkat Anda.") },
+            text = { Text("Media akan dihapus selamanya") },
             confirmButton = {
                 Button(
                     onClick = {
-                        selectedMediaForAction?.let {
-                            viewModel.deleteMediaPermanently(context, listOf(it))
-                            lazyPagingItems?.refresh()
+                        selectedMediaForAction?.let { mediaToDelete ->
+                            // Minta "surat izin" hapus file ke ViewModel
+                            val deleteIntent = viewModel.createDeleteRequestIntent(context, listOf(mediaToDelete))
+
+                            deleteIntent?.let {
+                                // Berikan surat izin ke launcher untuk dieksekusi
+                                deleteLauncher.launch(IntentSenderRequest.Builder(it).build())
+                            }
                         }
+                        // Tutup dialog, TAPI JANGAN BERSIHKAN selectedMediaForAction DI SINI
                         showDeleteConfirmDialog = false
-                        selectedMediaForAction = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) { Text("Hapus") }
@@ -144,7 +177,7 @@ fun TrashScreen(
                 Text("Sampah kosong", modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
+                    columns = GridCells.Fixed(3),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(1.dp)
                 ) {

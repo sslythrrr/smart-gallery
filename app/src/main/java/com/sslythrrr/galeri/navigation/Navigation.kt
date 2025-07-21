@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -36,6 +37,7 @@ import com.sslythrrr.galeri.viewmodel.MediaViewModel
 import com.sslythrrr.galeri.viewmodel.ThemeViewModel
 import kotlinx.coroutines.launch
 import androidx.navigation.NavType // <-- TAMBAHKAN IMPORT INI
+import com.sslythrrr.galeri.data.entity.ScannedImage
 import com.sslythrrr.galeri.ui.media.Album
 import com.sslythrrr.galeri.ui.media.MediaType
 import com.sslythrrr.galeri.ui.screens.management.CollectionsScreen
@@ -85,9 +87,20 @@ fun Navigation(
                 isDarkTheme = isDarkTheme
             )
         }
-        composable("main") {
+        composable(
+            route = "main?page={pageIndex}",
+            arguments = listOf(navArgument("pageIndex") {
+                type = NavType.IntType
+                defaultValue = 1
+            })
+        ) { backStackEntry ->
+
+            val initialPage = backStackEntry.arguments?.getInt("pageIndex") ?: 1
+
             var isMainScreenLoading by remember { mutableStateOf(false) }
+
             MainScreen(
+                initialPage = initialPage, // <--- INI SATU-SATUNYA TAMBAHAN DI SINI
                 context = context,
                 onAlbumClick = { album ->
                     if (!navigationState.value) {
@@ -110,17 +123,15 @@ fun Navigation(
                     navController.navigate("trash")
                 },
                 onImageClick = { path ->
-                    coroutineScope.launch {
-                        val allMedia = viewModel.fetchMedia(context)
-                        val foundMedia = allMedia.find { it.uri.toString() == path }
-                        foundMedia?.let { media ->
-                            if (!navigationState.value) {
-                                navigationState.value = true
-                                navController.navigate("mediaDetail/${media.id}")
-                                coroutineScope.launch {
-                                    navigationState.value = false
-                                }
-                            }
+                    val imageListInBubble = chatbotViewModel.messages.value
+                        .lastOrNull { it.images.isNotEmpty() }?.images ?: emptyList()
+
+                    if (imageListInBubble.isNotEmpty()) {
+                        val fullMediaListForPager = imageListInBubble.map { it.toMedia() }
+                        viewModel.setMediaPagerFromList(fullMediaListForPager)
+                        val clickedMedia = fullMediaListForPager.find { it.uri.toString() == path }
+                        clickedMedia?.let {
+                            navController.navigate("mediaDetail/${it.id}")
                         }
                     }
                 },
@@ -141,22 +152,15 @@ fun Navigation(
         composable("filteredImages") {
             ChatbotResults(
                 onBack = { navController.popBackStack() },
-                onImageClick = { path ->
-                    coroutineScope.launch {
-                        val allMedia = viewModel.fetchMedia(context)
-                        val foundMedia = allMedia.find { it.uri.toString() == path }
-                        foundMedia?.let { media ->
-                            if (!navigationState.value) {
-                                navigationState.value = true
-                                navController.navigate("mediaDetail/${media.id}")
-                                coroutineScope.launch {
-                                    navigationState.value = false
-                                }
-                            }
-                        }
-                    }
+                onImageClick = { media ->
+                    val allFilteredScannedImages = chatbotViewModel.allFilteredImages.value
+                    val fullMediaList = allFilteredScannedImages.map { it.toMedia() }
+
+                    viewModel.setMediaPagerFromList(fullMediaList)
+                    navController.navigate("mediaDetail/${media.id}")
                 },
-                viewModel = chatbotViewModel,
+                chatbotViewModel = chatbotViewModel,
+                mediaViewModel = viewModel,
                 isDarkTheme = isDarkTheme
             )
         }
@@ -214,15 +218,9 @@ fun Navigation(
             SearchHistoryScreen(
                 onBackPressed = { navController.popBackStack() },
                 onHistoryClick = { query ->
-                    // Saat item riwayat di-klik, kita kembali ke halaman chatbot
-                    // dan langsung jalankan pencarian dengan query itu!
-                    chatbotViewModel.sendMessage(query)
-                    navController.navigate("main") {
-                        // Ini untuk pindah ke tab chatbot (index ke-0)
-                        // Kamu mungkin perlu menyesuaikan cara berpindah tab-nya
-                        // tergantung implementasi pager-mu.
-                        // Untuk saat ini, kita anggap kembali ke 'main' saja.
-                        popUpTo("main") { inclusive = true }
+                    chatbotViewModel.resendMessage(query)
+                    navController.navigate("main?page=0") {
+                        popUpTo("main?page={pageIndex}") { inclusive = true }
                     }
                 },
                 isDarkTheme = isDarkTheme
@@ -325,10 +323,12 @@ fun Navigation(
             enterTransition = { slideInHorizontally { it } },
             exitTransition = { slideOutHorizontally { it } }
         ) {
-            DuplicateMediaScreen( // Panggil Composable yang sudah kamu siapkan
+            DuplicateMediaScreen(
                 context = context,
                 onBack = { navController.popBackStack() },
-                onMediaClick = { media ->
+                onMediaClick = { media -> // Media object sudah benar
+                    val fullList = viewModel.duplicateMedia.value
+                    viewModel.setMediaPagerFromList(fullList)
                     navController.navigate("mediaDetail/${media.id}")
                 },
                 viewModel = viewModel,
@@ -378,4 +378,23 @@ fun Navigation(
             )
         }
     }
+}
+private fun ScannedImage.toMedia(): Media {
+    return Media(
+        id = this.uri.hashCode().toLong(),
+        title = this.nama,
+        uri = this.uri.toUri(),
+        type = if (this.type.startsWith("video")) MediaType.VIDEO else MediaType.IMAGE,
+        albumId = this.album.hashCode().toLong(),
+        albumName = this.album,
+        dateTaken = this.tanggal,
+        dateAdded = this.tanggal,
+        size = this.ukuran,
+        relativePath = this.path,
+        thumbnailPath = this.thumbnailPath,
+        isFavorite = this.isFavorite,
+        fileHash = this.fileHash,
+        width = this.resolusi.substringBefore("x").toIntOrNull() ?: 0,
+        height = this.resolusi.substringAfter("x").toIntOrNull() ?: 0
+    )
 }

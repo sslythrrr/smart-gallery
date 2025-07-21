@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.sslythrrr.galeri.data.entity.DetectedText
+import com.sslythrrr.galeri.data.entity.ScannedImage
 
 @Dao
 interface DetectedTextDao {
@@ -30,4 +31,9 @@ interface DetectedTextDao {
 
     @Query("SELECT DISTINCT uri FROM deteksi_teks")
     fun getAllProcessedPaths(): List<String>
+
+    @Query("SELECT s.* FROM deteksi_gambar s " +
+            "JOIN deteksi_teks t ON s.uri = t.uri " +
+            "WHERE t.text LIKE '%' || :query || '%' AND s.is_deleted = 0")
+    fun searchImagesByContainedText(query: String): List<ScannedImage>
 }

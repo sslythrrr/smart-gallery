@@ -25,8 +25,8 @@ data class ScannedImage(
     @ColumnInfo(name = "retry_lokasi") val retryLokasi: Int = 0,
     @ColumnInfo(name = "thumbnail_path") val thumbnailPath: String? = null,
     @ColumnInfo(name = "file_hash", index = true) val fileHash: String? = null,
-    @ColumnInfo(name = "is_trashed", defaultValue = "0") val isTrashed: Boolean = false,
-    @ColumnInfo(name = "trashed_timestamp") val trashedTimestamp: Long? = null,
+    @ColumnInfo(name = "is_deleted", defaultValue = "0") val isTrashed: Boolean = false,
+    @ColumnInfo(name = "delete_timestamp") val trashedTimestamp: Long? = null,
     @ColumnInfo(name = "is_favorite", defaultValue = "0") val isFavorite: Boolean = false,
-    @ColumnInfo(name = "collections") val collections: String? = null
+    @ColumnInfo(name = "koleksi") val collections: String? = null
 )
