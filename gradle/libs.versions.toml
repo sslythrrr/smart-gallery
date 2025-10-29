@@ -1,6 +1,7 @@
 [versions]
 accompanistPermissions = "0.34.0"
 agp = "8.9.3"
+benchmarkMacroJunit4 = "1.2.3"
 coil = "2.5.0"
 coilCompose = "2.5.0"
 coilVideo = "2.5.0"
@@ -11,26 +12,26 @@ gson = "2.10.1"
 kotlin = "2.1.10"
 coreKtx = "1.16.0"
 junit = "4.13.2"
-junitVersion = "1.2.1"
-espressoCore = "3.6.1"
+junitVersion = "1.3.0"
+espressoCore = "3.7.0"
 kotlinxCoroutinesPlayServices = "1.7.3"
-lifecycleRuntimeKtx = "2.9.1"
+lifecycleRuntimeKtx = "2.9.2"
 activityCompose = "1.10.1"
-composeBom = "2025.06.01"
-lifecycleViewmodelCompose = "2.9.1"
-litert = "1.3.0"
-litertSupport = "1.3.0"
+composeBom = "2025.07.00"
+lifecycleViewmodelCompose = "2.9.2"
+litert = "1.4.0"
+litertSupport = "1.4.0"
 material3 = "1.3.2"
 materialIconsExtended = "1.7.8"
-media3Common = "1.7.1"
-media3Exoplayer = "1.7.1"
-media3Ui = "1.7.1"
-navigationCompose = "2.9.0"
+media3Common = "1.8.0"
+media3Exoplayer = "1.8.0"
+media3Ui = "1.8.0"
+navigationCompose = "2.9.3"
 pagingCompose = "3.3.6"
 pagingRuntimeKtx = "3.3.6"
+profileinstaller = "1.4.0"
 roomPaging = "2.7.2"
-textRecognition = "16.0.1"
-workRuntimeKtx = "2.10.2"
+workRuntimeKtx = "2.10.3"
 room = "2.7.2"
 
 
@@ -38,6 +39,7 @@ room = "2.7.2"
 accompanist-pager = { module = "com.google.accompanist:accompanist-pager", version.ref = "accompanistPermissions" }
 accompanist-pager-indicators = { module = "com.google.accompanist:accompanist-pager-indicators", version.ref = "accompanistPermissions" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
+androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmarkMacroJunit4" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
@@ -51,6 +53,7 @@ androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "medi
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 androidx-paging-compose = { module = "androidx.paging:paging-compose", version.ref = "pagingCompose" }
 androidx-paging-runtime-ktx = { module = "androidx.paging:paging-runtime-ktx", version.ref = "pagingRuntimeKtx" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 androidx-room-paging = { module = "androidx.room:room-paging", version.ref = "roomPaging" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtx" }
 coil = { module = "io.coil-kt:coil", version.ref = "coil" }
@@ -75,7 +78,6 @@ kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-cor
 litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
 litert-support = { module = "com.google.ai.edge.litert:litert-support", version.ref = "litertSupport" }
 material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "textRecognition" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }

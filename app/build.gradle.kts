@@ -6,36 +6,47 @@ plugins {
 }
 
 android {
-    namespace = "com.sslythrrr.galeri"
+    namespace = "com.sslythrrr.voe"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.sslythrrr.galeri"
+        applicationId = "com.sslythrrr.voe"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "2025.07.06.drogon"
+        versionCode = 5
+        versionName = "25.08.08.heartoftarrasque"
+        buildConfigField(
+            "String",
+            "GEMINI_API_KEY",
+            "\"${project.findProperty("GEMINI_API_KEY") ?: ""}\""
+        )
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
+            //noinspection ChromeOsAbiSupport
             abiFilters += listOf("arm64-v8a")
         }
     }
+
     buildTypes {
-        debug {
-            buildConfigField("Boolean", "USE_PREPOPULATED_DB", "true")//db
-        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("Boolean", "USE_PREPOPULATED_DB", "false")//db
+            // Optimasi untuk performa
+            ndk {
+                debugSymbolLevel = "NONE"
+            }
+        }
+        debug {
+            isMinifyEnabled = false
+            isDebuggable = true
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -47,11 +58,22 @@ android {
         compose = true
         buildConfig = true
     }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.6.0"
+    }
+    
+    // Optimasi performa
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/versions/**"
+        }
+    }
 }
 
 dependencies {
     implementation (libs.gson)
-    implementation (libs.androidx.ui)
     implementation (libs.androidx.material)
     implementation (libs.androidx.ui.tooling.preview)
     implementation (libs.androidx.foundation)
@@ -72,7 +94,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.material3)
     implementation (libs.androidx.work.runtime.ktx)
@@ -91,8 +112,6 @@ dependencies {
     implementation (libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.room.paging)
 
-    //modelcv
-    implementation (libs.text.recognition)
     implementation (libs.litert)
     implementation (libs.litert.support)
 
@@ -100,11 +119,15 @@ dependencies {
     implementation (libs.androidx.paging.runtime.ktx)
     implementation (libs.androidx.paging.compose)
 
-// Coil untuk loading gambar dan video
+    // Coil untuk loading gambar dan video
     implementation (libs.coil.video)
 
-// Lifecycle components (jika belum ada)
+    // Lifecycle components (jika belum ada)
     implementation (libs.androidx.lifecycle.runtime.ktx)
     implementation (libs.androidx.lifecycle.viewmodel.compose)
     implementation (libs.androidx.exifinterface)
+    
+    // Performance optimizations
+    implementation (libs.androidx.profileinstaller)
+    implementation (libs.androidx.benchmark.macro.junit4)
 }

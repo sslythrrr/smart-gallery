@@ -19,5 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Smart Gallery"
+rootProject.name = "VueO'Eden"
 include(":app")
+ 

@@ -1,0 +1,25 @@
+# Baseline profiles for performance optimization
+# This file helps optimize app startup and runtime performance
+
+# Core classes that should be pre-compiled
+HSP:com/sslythrrr/voe/MainActivity
+HSP:com/sslythrrr/voe/ui/screens/MainScreen*
+HSP:com/sslythrrr/voe/ui/media/MediaGrid*
+HSP:com/sslythrrr/voe/ui/media/MediaItem*
+HSP:com/sslythrrr/voe/viewmodel/MediaViewModel*
+HSP:com/sslythrrr/voe/navigation/Navigation*
+
+# Compose classes for smooth UI
+HSP:androidx/compose/runtime/Composer*
+HSP:androidx/compose/ui/graphics/Canvas*
+HSP:androidx/compose/foundation/lazy/grid/LazyVerticalGrid*
+HSP:androidx/compose/foundation/lazy/LazyList*
+
+# Image loading optimization
+HSP:coil/compose/AsyncImage*
+HSP:coil/request/ImageRequest*
+HSP:coil/memory/MemoryCache*
+
+# Database operations
+HSP:androidx/room/Room*
+HSP:androidx/paging/Pager*
